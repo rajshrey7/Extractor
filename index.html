@@ -381,21 +381,29 @@
             <!-- Verify Tab -->
             <div id="verify" class="tab-content">
                 <div class="form-section">
-                    <h2>Data Verification</h2>
-                    <p style="color: #666; margin-bottom: 20px;">Compare extracted data with original source for accuracy</p>
+                    <h2>🔍 Advanced OCR Verification System</h2>
+                    <p style="color: #666; margin-bottom: 20px;">Validates OCR data accuracy, format, and detects errors</p>
                     
                     <div class="form-group">
-                        <label>Extracted Data (JSON)</label>
-                        <textarea id="extractedData" rows="8" placeholder='{"Name": "John Doe", "Date of Birth": "01/01/1990", ...}'></textarea>
+                        <label>📋 Structured Data (JSON) - OCR Extracted</label>
+                        <textarea id="extractedData" rows="8" placeholder='{"name": "John Doe", "dob": "01/01/1990", "mobile": "1234567890", "email": "john@example.com", ...}'></textarea>
+                        <small style="color: #666;">Paste the structured data extracted from OCR</small>
                     </div>
 
                     <div class="form-group">
-                        <label>Original Data (JSON)</label>
-                        <textarea id="originalData" rows="8" placeholder='{"Name": "John Doe", "Date of Birth": "01/01/1990", ...}'></textarea>
+                        <label>📄 Original Data (JSON) - Optional</label>
+                        <textarea id="originalData" rows="6" placeholder='{"name": "John Doe", "dob": "01/01/1990", ...}'></textarea>
+                        <small style="color: #666;">Optional: Original/reference data for comparison</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>📝 OCR Text Block (Optional)</label>
+                        <textarea id="ocrTextBlock" rows="4" placeholder="Raw OCR extracted text from the document..."></textarea>
+                        <small style="color: #666;">Optional: Raw OCR text for additional validation</small>
                     </div>
 
                     <div style="text-align: center;">
-                        <button class="btn" onclick="verifyData()">Verify Data</button>
+                        <button class="btn" onclick="verifyData()">🔍 Verify & Validate Data</button>
                     </div>
 
                     <div class="loading" id="verifyLoading">
@@ -406,13 +414,28 @@
                     <div class="alert" id="verifyAlert"></div>
 
                     <div class="results" id="verifyResults">
+                        <!-- Overall Status -->
+                        <div class="result-card" id="overallStatusCard" style="margin-bottom: 20px;">
+                            <h3 id="overallStatusTitle">📊 Verification Status</h3>
+                            <div id="overallStatusContent"></div>
+                        </div>
+                        
+                        <!-- Cleaned Data -->
+                        <div class="result-card" id="cleanedDataCard" style="display: none;">
+                            <h3>✨ Cleaned & Verified Data</h3>
+                            <pre id="cleanedDataDisplay" style="background: #f8f9ff; padding: 15px; border-radius: 8px; overflow-x: auto;"></pre>
+                        </div>
+                        
+                        <!-- Verification Report -->
                         <div class="result-card">
-                            <h3>✅ Verification Results</h3>
+                            <h3>📋 Detailed Verification Report</h3>
                             <div id="verificationDetails"></div>
-                            <div style="margin-top: 20px; padding: 15px; background: white; border-radius: 8px;">
-                                <strong>Overall Confidence: </strong>
-                                <span id="overallConfidence" style="font-size: 1.5em; color: #667eea;"></span>%
-                            </div>
+                        </div>
+                        
+                        <!-- Summary -->
+                        <div class="result-card">
+                            <h3>📊 Summary Statistics</h3>
+                            <div id="summaryStats"></div>
                         </div>
                     </div>
                 </div>
@@ -595,9 +618,10 @@
         async function verifyData() {
             const extracted = document.getElementById('extractedData').value;
             const original = document.getElementById('originalData').value;
+            const ocrText = document.getElementById('ocrTextBlock').value;
 
-            if (!extracted || !original) {
-                showAlert('verifyAlert', 'Please provide both extracted and original data', 'error');
+            if (!extracted) {
+                showAlert('verifyAlert', 'Please provide extracted structured data', 'error');
                 return;
             }
 
@@ -608,51 +632,163 @@
             try {
                 const formData = new FormData();
                 formData.append('extracted_data', extracted);
-                formData.append('original_data', original);
+                if (original) formData.append('original_data', original);
+                if (ocrText) formData.append('ocr_text_block', ocrText);
 
                 const response = await fetch('/api/verify', {
                     method: 'POST',
                     body: formData
                 });
 
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+                    throw new Error(errorData.detail || `Server error: ${response.status}`);
+                }
+
                 const data = await response.json();
 
                 if (data.success) {
+                    // Display overall status
+                    const statusCard = document.getElementById('overallStatusCard');
+                    const statusTitle = document.getElementById('overallStatusTitle');
+                    const statusContent = document.getElementById('overallStatusContent');
+                    
+                    const status = data.overall_verification_status;
+                    let statusColor = '#28a745';
+                    let statusIcon = '✅';
+                    let statusText = 'PASS';
+                    
+                    if (status === 'PASS WITH CORRECTIONS') {
+                        statusColor = '#ffc107';
+                        statusIcon = '⚠️';
+                        statusText = 'PASS WITH CORRECTIONS';
+                    } else if (status === 'FAIL') {
+                        statusColor = '#dc3545';
+                        statusIcon = '❌';
+                        statusText = 'FAIL';
+                    }
+                    
+                    statusCard.style.borderLeftColor = statusColor;
+                    statusTitle.innerHTML = `${statusIcon} Overall Verification: <span style="color: ${statusColor};">${statusText}</span>`;
+                    
+                    // Display cleaned data
+                    if (data.cleaned_data) {
+                        document.getElementById('cleanedDataCard').style.display = 'block';
+                        document.getElementById('cleanedDataDisplay').textContent = JSON.stringify(data.cleaned_data, null, 2);
+                    }
+                    
+                    // Display verification report
                     const detailsDiv = document.getElementById('verificationDetails');
                     detailsDiv.innerHTML = '';
-
-                    for (const [field, result] of Object.entries(data.verification_results)) {
-                        const resultDiv = document.createElement('div');
-                        resultDiv.className = `verification-result ${result.match ? 'match' : 'mismatch'}`;
-                        
-                        let confidenceClass = 'confidence-low';
-                        if (result.confidence >= 80) confidenceClass = 'confidence-high';
-                        else if (result.confidence >= 60) confidenceClass = 'confidence-medium';
-
-                        resultDiv.innerHTML = `
-                            <div>
-                                <strong>${field}</strong><br>
-                                <small>Extracted: ${result.extracted || 'N/A'}</small><br>
-                                <small>Original: ${result.original || 'N/A'}</small>
-                            </div>
-                            <div>
-                                ${result.confidence !== null ? 
-                                    `<span class="confidence-badge ${confidenceClass}">${result.confidence}%</span>` : 
-                                    '<span style="color: #666;">N/A</span>'
-                                }
-                            </div>
-                        `;
-                        detailsDiv.appendChild(resultDiv);
+                    
+                    if (data.verification_report && data.verification_report.length > 0) {
+                        data.verification_report.forEach((report, index) => {
+                            const resultDiv = document.createElement('div');
+                            
+                            let statusClass = 'match';
+                            let statusColor = '#28a745';
+                            if (report.status === 'mismatch') {
+                                statusClass = 'mismatch';
+                                statusColor = '#dc3545';
+                            } else if (report.status === 'corrected') {
+                                statusClass = 'match';
+                                statusColor = '#ffc107';
+                            }
+                            
+                            resultDiv.className = `verification-result ${statusClass}`;
+                            resultDiv.style.borderLeftColor = statusColor;
+                            
+                            let confidenceBadge = '';
+                            if (report.confidence) {
+                                let confClass = 'confidence-low';
+                                const confStr = String(report.confidence).toLowerCase();
+                                if (confStr === 'high') confClass = 'confidence-high';
+                                else if (confStr === 'medium') confClass = 'confidence-medium';
+                                confidenceBadge = `<span class="confidence-badge ${confClass}">${confStr.toUpperCase()}</span>`;
+                            }
+                            
+                            let issuesHtml = '';
+                            if (report.issues && report.issues.length > 0) {
+                                issuesHtml = `<div style="margin-top: 8px; padding: 8px; background: #fff3cd; border-radius: 4px; font-size: 0.9em;">
+                                    <strong>Issues:</strong><ul style="margin: 5px 0; padding-left: 20px;">
+                                    ${report.issues.map(issue => `<li>${issue}</li>`).join('')}
+                                    </ul></div>`;
+                            }
+                            
+                            let similarityHtml = '';
+                            if (report.similarity_score !== null) {
+                                similarityHtml = `<small style="color: #666;">Similarity: ${report.similarity_score}%</small><br>`;
+                            }
+                            
+                            resultDiv.innerHTML = `
+                                <div style="flex: 1;">
+                                    <strong style="font-size: 1.1em;">${report.field}</strong>
+                                    <small style="color: #666; margin-left: 10px;">(${report.field_type})</small>
+                                    <div style="margin-top: 10px;">
+                                        <div><strong>OCR Value:</strong> <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">${report.ocr_value || 'N/A'}</code></div>
+                                        ${report.ocr_value !== report.corrected_value ? 
+                                            `<div><strong>Corrected:</strong> <code style="background: #d4edda; padding: 2px 6px; border-radius: 3px;">${report.corrected_value}</code></div>` : ''
+                                        }
+                                        ${report.original_value ? 
+                                            `<div><strong>Original:</strong> <code style="background: #e7f3ff; padding: 2px 6px; border-radius: 3px;">${report.original_value}</code></div>` : ''
+                                        }
+                                        <div style="margin-top: 5px;">
+                                            <strong>Status:</strong> <span style="color: ${statusColor}; font-weight: bold;">${report.status.toUpperCase()}</span>
+                                            ${report.format_valid ? '<span style="color: #28a745; margin-left: 10px;">✓ Format Valid</span>' : '<span style="color: #dc3545; margin-left: 10px;">✗ Format Invalid</span>'}
+                                        </div>
+                                        ${similarityHtml}
+                                        ${issuesHtml}
+                                    </div>
+                                </div>
+                                <div>
+                                    ${confidenceBadge}
+                                </div>
+                            `;
+                            detailsDiv.appendChild(resultDiv);
+                        });
                     }
-
-                    document.getElementById('overallConfidence').textContent = data.overall_confidence;
+                    
+                    // Display summary
+                    if (data.summary) {
+                        const summaryDiv = document.getElementById('summaryStats');
+                        summaryDiv.innerHTML = `
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 15px;">
+                                <div style="text-align: center; padding: 15px; background: #f8f9ff; border-radius: 8px;">
+                                    <div style="font-size: 2em; font-weight: bold; color: #667eea;">${data.summary.total_fields}</div>
+                                    <div style="color: #666;">Total Fields</div>
+                                </div>
+                                <div style="text-align: center; padding: 15px; background: #d4edda; border-radius: 8px;">
+                                    <div style="font-size: 2em; font-weight: bold; color: #28a745;">${data.summary.correct}</div>
+                                    <div style="color: #666;">Correct</div>
+                                </div>
+                                <div style="text-align: center; padding: 15px; background: #fff3cd; border-radius: 8px;">
+                                    <div style="font-size: 2em; font-weight: bold; color: #ffc107;">${data.summary.corrected}</div>
+                                    <div style="color: #666;">Corrected</div>
+                                </div>
+                                <div style="text-align: center; padding: 15px; background: #f8d7da; border-radius: 8px;">
+                                    <div style="font-size: 2em; font-weight: bold; color: #dc3545;">${data.summary.mismatch}</div>
+                                    <div style="color: #666;">Mismatch</div>
+                                </div>
+                            </div>
+                            ${data.summary.issues_found > 0 ? 
+                                `<div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 8px;">
+                                    <strong>⚠️ Total Issues Found:</strong> ${data.summary.issues_found}
+                                </div>` : ''
+                            }
+                        `;
+                    }
+                    
                     document.getElementById('verifyResults').classList.add('show');
-                    showAlert('verifyAlert', `Verified ${data.fields_verified} fields successfully!`, 'success');
+                    showAlert('verifyAlert', `Verification complete! Status: ${status}`, 'success');
                 } else {
                     showAlert('verifyAlert', 'Verification failed', 'error');
                 }
             } catch (error) {
-                showAlert('verifyAlert', 'Error: ' + error.message, 'error');
+                let errorMsg = 'Error: ' + error.message;
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    errorMsg = 'Cannot connect to server. Make sure the server is running at http://localhost:8000';
+                }
+                showAlert('verifyAlert', errorMsg, 'error');
             } finally {
                 document.getElementById('verifyLoading').classList.remove('show');
             }

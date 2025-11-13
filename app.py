@@ -15,6 +15,7 @@ from typing import Optional, Dict, List
 from difflib import SequenceMatcher
 import os
 import uuid
+from ocr_verifier import OCRVerifier
 
 app = FastAPI(title="OCR Text Extraction & Verification API")
 
@@ -236,48 +237,46 @@ async def upload_image(file: UploadFile = File(...)):
 @app.post("/api/verify")
 async def verify_data(
     extracted_data: str = Form(...),
-    original_data: str = Form(...)
+    original_data: Optional[str] = Form(None),
+    ocr_text_block: Optional[str] = Form(None)
 ):
-    """Verify extracted data against original source"""
+    """
+    Advanced OCR Verification Engine
+    Validates and verifies structured data extracted from scanned documents
+    """
     try:
-        extracted = json.loads(extracted_data)
-        original = json.loads(original_data)
+        structured_data = json.loads(extracted_data)
         
-        verification_results = {}
-        confidence_scores = {}
+        # Parse original data if provided
+        original_dict = None
+        if original_data:
+            try:
+                original_dict = json.loads(original_data)
+            except json.JSONDecodeError:
+                # If not JSON, treat as string
+                original_dict = {"raw_text": original_data}
         
-        for field, extracted_value in extracted.items():
-            original_value = original.get(field, "")
-            if original_value:
-                similarity = SequenceMatcher(None, 
-                    str(extracted_value).lower(), 
-                    str(original_value).lower()
-                ).ratio()
-                confidence_scores[field] = similarity * 100
-                verification_results[field] = {
-                    "extracted": extracted_value,
-                    "original": original_value,
-                    "match": similarity > 0.8,
-                    "confidence": round(similarity * 100, 2)
-                }
-            else:
-                verification_results[field] = {
-                    "extracted": extracted_value,
-                    "original": None,
-                    "match": None,
-                    "confidence": None
-                }
+        # Initialize verifier
+        verifier = OCRVerifier()
         
-        overall_confidence = sum(confidence_scores.values()) / len(confidence_scores) if confidence_scores else 0
+        # Perform verification
+        result = verifier.verify_all_fields(
+            structured_data=structured_data,
+            original_data=original_dict,
+            ocr_text_block=ocr_text_block
+        )
         
         return JSONResponse(content={
             "success": True,
-            "verification_results": verification_results,
-            "overall_confidence": round(overall_confidence, 2),
-            "fields_verified": len(verification_results)
+            "cleaned_data": result["cleaned_data"],
+            "verification_report": result["verification_report"],
+            "overall_verification_status": result["overall_verification_status"],
+            "summary": result["summary"]
         })
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON format: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Verification error: {str(e)}")
 
 @app.post("/api/autofill")
 async def autofill_form(
