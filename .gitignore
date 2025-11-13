@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Model files (large)
+*.pt
+*.pth
+*.onnx
+*.h5
+
+# Output directories
+final_outputs/
+idcard_outputs/
+uploads/
+temp/
+
+# Generated files
+*.mp3
+*.txt
+*.jpg
+*.png
+!captured_image.jpg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+

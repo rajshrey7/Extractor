@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR Text Extraction & Verification</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            padding: 15px 30px;
+            background: none;
+            border: none;
+            font-size: 1.1em;
+            cursor: pointer;
+            color: #666;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: bold;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 60px;
+            text-align: center;
+            background: #f8f9ff;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .upload-area:hover {
+            background: #f0f2ff;
+            border-color: #764ba2;
+        }
+
+        .upload-area.dragover {
+            background: #e8ebff;
+            border-color: #764ba2;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        .upload-area input[type="file"] {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 10px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .results {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .results.show {
+            display: block;
+        }
+
+        .result-card {
+            background: #f8f9ff;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+            border-left: 4px solid #667eea;
+        }
+
+        .result-card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .field-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background: white;
+            margin: 5px 0;
+            border-radius: 5px;
+            align-items: center;
+        }
+
+        .field-label {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .field-value {
+            color: #666;
+            flex: 1;
+            text-align: right;
+            margin-left: 20px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .form-section {
+            margin-top: 30px;
+        }
+
+        .form-group {
+            margin: 20px 0;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .verification-result {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .verification-result.match {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+        }
+
+        .verification-result.mismatch {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+        }
+
+        .confidence-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .confidence-high {
+            background: #28a745;
+            color: white;
+        }
+
+        .confidence-medium {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .confidence-low {
+            background: #dc3545;
+            color: white;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .preview-image {
+            max-width: 100%;
+            border-radius: 10px;
+            margin: 20px 0;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .autofill-section {
+            margin-top: 30px;
+        }
+
+        .match-item {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .match-item.no-match {
+            border-left-color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 OCR Text Extraction & Verification</h1>
+            <p>Extract text from documents, auto-fill forms, and verify data accuracy</p>
+        </div>
+
+        <div class="content">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('extract')">Extract Text</button>
+                <button class="tab" onclick="switchTab('verify')">Verify Data</button>
+                <button class="tab" onclick="switchTab('autofill')">Auto-Fill Form</button>
+            </div>
+
+            <!-- Extract Tab -->
+            <div id="extract" class="tab-content active">
+                <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                    <div class="upload-icon">📄</div>
+                    <h2>Upload Document Image</h2>
+                    <p>Click to browse or drag and drop your image here</p>
+                    <p style="color: #666; margin-top: 10px;">Supports: JPG, PNG, JPEG</p>
+                    <input type="file" id="fileInput" accept="image/*">
+                </div>
+
+                <div id="imagePreview" style="display: none; text-align: center;">
+                    <img id="previewImg" class="preview-image" alt="Preview">
+                </div>
+
+                <div style="text-align: center; margin-top: 20px;">
+                    <button class="btn" id="processBtn" onclick="processImage()" disabled>Process Image</button>
+                </div>
+
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Processing image... Please wait</p>
+                </div>
+
+                <div class="alert" id="alert"></div>
+
+                <div class="results" id="results">
+                    <div class="result-card">
+                        <h3>📋 Extracted Fields</h3>
+                        <div id="extractedFields"></div>
+                    </div>
+                    <div class="result-card" id="generalTextCard" style="display: none;">
+                        <h3>📝 General Text</h3>
+                        <div id="generalText"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Verify Tab -->
+            <div id="verify" class="tab-content">
+                <div class="form-section">
+                    <h2>Data Verification</h2>
+                    <p style="color: #666; margin-bottom: 20px;">Compare extracted data with original source for accuracy</p>
+                    
+                    <div class="form-group">
+                        <label>Extracted Data (JSON)</label>
+                        <textarea id="extractedData" rows="8" placeholder='{"Name": "John Doe", "Date of Birth": "01/01/1990", ...}'></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Original Data (JSON)</label>
+                        <textarea id="originalData" rows="8" placeholder='{"Name": "John Doe", "Date of Birth": "01/01/1990", ...}'></textarea>
+                    </div>
+
+                    <div style="text-align: center;">
+                        <button class="btn" onclick="verifyData()">Verify Data</button>
+                    </div>
+
+                    <div class="loading" id="verifyLoading">
+                        <div class="spinner"></div>
+                        <p>Verifying data... Please wait</p>
+                    </div>
+
+                    <div class="alert" id="verifyAlert"></div>
+
+                    <div class="results" id="verifyResults">
+                        <div class="result-card">
+                            <h3>✅ Verification Results</h3>
+                            <div id="verificationDetails"></div>
+                            <div style="margin-top: 20px; padding: 15px; background: white; border-radius: 8px;">
+                                <strong>Overall Confidence: </strong>
+                                <span id="overallConfidence" style="font-size: 1.5em; color: #667eea;"></span>%
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Auto-Fill Tab -->
+            <div id="autofill" class="tab-content">
+                <div class="form-section">
+                    <h2>Form Auto-Fill</h2>
+                    <p style="color: #666; margin-bottom: 20px;">Match extracted data to form fields</p>
+                    
+                    <div class="form-group">
+                        <label>Form Fields (one per line or JSON array)</label>
+                        <textarea id="formFields" rows="6" placeholder="Name&#10;Date of Birth&#10;Passport No&#10;..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Extracted Data (JSON)</label>
+                        <textarea id="autofillExtractedData" rows="8" placeholder='{"Name": "John Doe", "Date of Birth": "01/01/1990", ...}'></textarea>
+                    </div>
+
+                    <div style="text-align: center;">
+                        <button class="btn" onclick="autofillForm()">Match Fields</button>
+                    </div>
+
+                    <div class="loading" id="autofillLoading">
+                        <div class="spinner"></div>
+                        <p>Matching fields... Please wait</p>
+                    </div>
+
+                    <div class="alert" id="autofillAlert"></div>
+
+                    <div class="results" id="autofillResults">
+                        <div class="result-card">
+                            <h3>🎯 Field Matches</h3>
+                            <div id="matchDetails"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let extractedDataGlobal = {};
+
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        // File upload handling
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const processBtn = document.getElementById('processBtn');
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showAlert('alert', 'Please upload an image file', 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const preview = document.getElementById('imagePreview');
+                const previewImg = document.getElementById('previewImg');
+                previewImg.src = e.target.result;
+                preview.style.display = 'block';
+                processBtn.disabled = false;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function processImage() {
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files[0]) {
+                showAlert('alert', 'Please select an image first', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('results').classList.remove('show');
+            hideAlert('alert');
+
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status} ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    extractedDataGlobal = data.extracted_fields || {};
+                    
+                    // Display extracted fields
+                    const fieldsDiv = document.getElementById('extractedFields');
+                    fieldsDiv.innerHTML = '';
+                    
+                    if (Object.keys(data.extracted_fields).length > 0) {
+                        for (const [field, value] of Object.entries(data.extracted_fields)) {
+                            const fieldItem = document.createElement('div');
+                            fieldItem.className = 'field-item';
+                            fieldItem.innerHTML = `
+                                <span class="field-label">${field}:</span>
+                                <span class="field-value">${value}</span>
+                            `;
+                            fieldsDiv.appendChild(fieldItem);
+                        }
+                    } else {
+                        fieldsDiv.innerHTML = '<p style="color: #666;">No structured fields detected. Check general text below.</p>';
+                    }
+
+                    // Display general text
+                    if (data.general_text && data.general_text.length > 0) {
+                        document.getElementById('generalTextCard').style.display = 'block';
+                        document.getElementById('generalText').innerHTML = 
+                            '<p style="color: #666; line-height: 1.8;">' + 
+                            data.general_text.join('<br>') + 
+                            '</p>';
+                    } else {
+                        document.getElementById('generalTextCard').style.display = 'none';
+                    }
+
+                    // Populate extracted data textarea in other tabs
+                    document.getElementById('extractedData').value = JSON.stringify(data.extracted_fields, null, 2);
+                    document.getElementById('autofillExtractedData').value = JSON.stringify(data.extracted_fields, null, 2);
+
+                    document.getElementById('results').classList.add('show');
+                    showAlert('alert', 'Text extracted successfully!', 'success');
+                } else {
+                    showAlert('alert', 'Failed to process image', 'error');
+                }
+            } catch (error) {
+                let errorMsg = 'Error: ' + error.message;
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    errorMsg = 'Cannot connect to server. Make sure the server is running at http://localhost:8000';
+                }
+                showAlert('alert', errorMsg, 'error');
+            } finally {
+                document.getElementById('loading').classList.remove('show');
+            }
+        }
+
+        async function verifyData() {
+            const extracted = document.getElementById('extractedData').value;
+            const original = document.getElementById('originalData').value;
+
+            if (!extracted || !original) {
+                showAlert('verifyAlert', 'Please provide both extracted and original data', 'error');
+                return;
+            }
+
+            document.getElementById('verifyLoading').classList.add('show');
+            document.getElementById('verifyResults').classList.remove('show');
+            hideAlert('verifyAlert');
+
+            try {
+                const formData = new FormData();
+                formData.append('extracted_data', extracted);
+                formData.append('original_data', original);
+
+                const response = await fetch('/api/verify', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const detailsDiv = document.getElementById('verificationDetails');
+                    detailsDiv.innerHTML = '';
+
+                    for (const [field, result] of Object.entries(data.verification_results)) {
+                        const resultDiv = document.createElement('div');
+                        resultDiv.className = `verification-result ${result.match ? 'match' : 'mismatch'}`;
+                        
+                        let confidenceClass = 'confidence-low';
+                        if (result.confidence >= 80) confidenceClass = 'confidence-high';
+                        else if (result.confidence >= 60) confidenceClass = 'confidence-medium';
+
+                        resultDiv.innerHTML = `
+                            <div>
+                                <strong>${field}</strong><br>
+                                <small>Extracted: ${result.extracted || 'N/A'}</small><br>
+                                <small>Original: ${result.original || 'N/A'}</small>
+                            </div>
+                            <div>
+                                ${result.confidence !== null ? 
+                                    `<span class="confidence-badge ${confidenceClass}">${result.confidence}%</span>` : 
+                                    '<span style="color: #666;">N/A</span>'
+                                }
+                            </div>
+                        `;
+                        detailsDiv.appendChild(resultDiv);
+                    }
+
+                    document.getElementById('overallConfidence').textContent = data.overall_confidence;
+                    document.getElementById('verifyResults').classList.add('show');
+                    showAlert('verifyAlert', `Verified ${data.fields_verified} fields successfully!`, 'success');
+                } else {
+                    showAlert('verifyAlert', 'Verification failed', 'error');
+                }
+            } catch (error) {
+                showAlert('verifyAlert', 'Error: ' + error.message, 'error');
+            } finally {
+                document.getElementById('verifyLoading').classList.remove('show');
+            }
+        }
+
+        async function autofillForm() {
+            const formFieldsText = document.getElementById('formFields').value;
+            const extracted = document.getElementById('autofillExtractedData').value;
+
+            if (!formFieldsText || !extracted) {
+                showAlert('autofillAlert', 'Please provide both form fields and extracted data', 'error');
+                return;
+            }
+
+            // Parse form fields (support both JSON array and line-separated)
+            let formFieldsArray;
+            try {
+                formFieldsArray = JSON.parse(formFieldsText);
+            } catch {
+                formFieldsArray = formFieldsText.split('\n').filter(f => f.trim());
+            }
+
+            document.getElementById('autofillLoading').classList.add('show');
+            document.getElementById('autofillResults').classList.remove('show');
+            hideAlert('autofillAlert');
+
+            try {
+                const formData = new FormData();
+                formData.append('form_fields', JSON.stringify(formFieldsArray));
+                formData.append('extracted_data', extracted);
+
+                const response = await fetch('/api/autofill', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const matchDiv = document.getElementById('matchDetails');
+                    matchDiv.innerHTML = '';
+
+                    for (const [formField, match] of Object.entries(data.matches)) {
+                        const matchItem = document.createElement('div');
+                        matchItem.className = `match-item ${match.matched_field ? '' : 'no-match'}`;
+                        
+                        if (match.matched_field) {
+                            matchItem.innerHTML = `
+                                <div>
+                                    <strong>${formField}</strong> → 
+                                    <span style="color: #667eea;">${match.matched_field}</span>
+                                </div>
+                                <div>
+                                    <span style="color: #666;">Value: ${match.value}</span>
+                                    <span class="confidence-badge confidence-high" style="margin-left: 10px;">
+                                        ${match.confidence}%
+                                    </span>
+                                </div>
+                            `;
+                        } else {
+                            matchItem.innerHTML = `
+                                <div>
+                                    <strong>${formField}</strong> → 
+                                    <span style="color: #dc3545;">No match found</span>
+                                </div>
+                            `;
+                        }
+                        matchDiv.appendChild(matchItem);
+                    }
+
+                    document.getElementById('autofillResults').classList.add('show');
+                    showAlert('autofillAlert', `Matched ${data.fields_matched} out of ${Object.keys(data.matches).length} fields!`, 'success');
+                } else {
+                    showAlert('autofillAlert', 'Auto-fill matching failed', 'error');
+                }
+            } catch (error) {
+                showAlert('autofillAlert', 'Error: ' + error.message, 'error');
+            } finally {
+                document.getElementById('autofillLoading').classList.remove('show');
+            }
+        }
+
+        function showAlert(id, message, type) {
+            const alert = document.getElementById(id);
+            alert.textContent = message;
+            alert.className = `alert alert-${type} show`;
+        }
+
+        function hideAlert(id) {
+            document.getElementById(id).classList.remove('show');
+        }
+    </script>
+</body>
+</html>
+
