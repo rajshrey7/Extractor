@@ -3,13 +3,17 @@ Job Form Filler - Integrated with OCR System
 Automatically fills job application forms using OCR extracted data or resume information
 """
 import json
-import requests
 import re
-from typing import Dict, List, Optional, Any
-from difflib import SequenceMatcher
-import pandas as pd
-import sys
+import logging
 import os
+import sys
+from dataclasses import dataclass
+from difflib import SequenceMatcher
+from typing import Dict, List, Optional, Any, Tuple, Union
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Add Auto-Job-Form-Filler-Agent to path to use original modules
 _agent_path = os.path.join(os.path.dirname(__file__), 'Auto-Job-Form-Filler-Agent')
@@ -34,34 +38,151 @@ if os.path.exists(_agent_path):
                 google_form_handler = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(google_form_handler)
                 GoogleFormHandler = google_form_handler.GoogleFormHandler
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to load GoogleFormHandler: {e}")
             GoogleFormHandler = None
+
+@dataclass
+class FieldMatch:
+    """Represents a match between a form field and extracted data"""
+    field_name: str
+    field_value: Any
+    confidence: float
+    source: str  # 'direct', 'alias', 'fuzzy', 'inferred'
+    field_type: str = 'text'
+    required: bool = False
 
 
 class JobFormFiller:
-    """Intelligent job form filler using OCR extracted data"""
+    """
+    Intelligent job form filler using OCR extracted data
     
-    # Job application field mappings
+    Features:
+    - Field matching with confidence scoring
+    - Support for multiple field types
+    - Alias detection for common field names
+    - Required field validation
+    - Data type validation and formatting
+    """
+    
+    # Job application field mappings with weights
     JOB_FIELD_ALIASES = {
-        "name": ["full name", "first name", "last name", "surname", "given name", "applicant name"],
-        "email": ["email address", "e-mail", "email", "contact email"],
-        "phone": ["phone", "mobile", "telephone", "phone number", "mobile number", "contact number"],
-        "address": ["address", "residence", "location", "street address", "home address"],
-        "city": ["city", "town"],
-        "state": ["state", "province", "region"],
-        "zip": ["zip code", "postal code", "pincode", "zip"],
-        "country": ["country", "nation"],
-        "date of birth": ["dob", "birthdate", "date of birth", "birth date"],
-        "education": ["education", "qualification", "degree", "university", "college", "school"],
-        "experience": ["experience", "work experience", "employment", "job history", "career"],
-        "skills": ["skills", "technical skills", "competencies", "abilities"],
-        "resume": ["resume", "cv", "curriculum vitae"],
-        "cover letter": ["cover letter", "motivation letter"],
-        "linkedin": ["linkedin", "linkedin profile", "linkedin url"],
-        "website": ["website", "portfolio", "personal website"],
-        "availability": ["availability", "start date", "when can you start"],
-        "salary": ["salary", "expected salary", "compensation", "pay"],
-        "references": ["references", "referees", "reference contacts"]
+        "name": {
+            "aliases": ["full name", "first name", "last name", "surname", "given name", "applicant name"],
+            "type": "text",
+            "required": True,
+            "weight": 1.0
+        },
+        "email": {
+            "aliases": ["email address", "e-mail", "email", "contact email"],
+            "type": "email",
+            "required": True,
+            "weight": 1.0,
+            "validation": r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        },
+        "phone": {
+            "aliases": ["phone", "mobile", "telephone", "phone number", "mobile number", "contact number"],
+            "type": "tel",
+            "required": True,
+            "weight": 0.9
+        },
+        "address": {
+            "aliases": ["address", "residence", "location", "street address", "home address"],
+            "type": "text",
+            "required": True,
+            "weight": 0.8
+        },
+        "city": {
+            "aliases": ["city", "town"],
+            "type": "text",
+            "required": True,
+            "weight": 0.7
+        },
+        "state": {
+            "aliases": ["state", "province", "region"],
+            "type": "text",
+            "required": True,
+            "weight": 0.7
+        },
+        "zip": {
+            "aliases": ["zip code", "postal code", "pincode", "zip"],
+            "type": "text",
+            "required": True,
+            "weight": 0.7
+        },
+        "country": {
+            "aliases": ["country", "nation"],
+            "type": "text",
+            "required": True,
+            "weight": 0.7
+        },
+        "date_of_birth": {
+            "aliases": ["dob", "birthdate", "date of birth", "birth date"],
+            "type": "date",
+            "required": True,
+            "weight": 0.8
+        },
+        "education": {
+            "aliases": ["education", "qualification", "degree", "university", "college", "school"],
+            "type": "text",
+            "required": False,
+            "weight": 0.6
+        },
+        "experience": {
+            "aliases": ["experience", "work experience", "employment", "job history", "career"],
+            "type": "text",
+            "required": False,
+            "weight": 0.7
+        },
+        "skills": {
+            "aliases": ["skills", "technical skills", "competencies", "abilities"],
+            "type": "text",
+            "required": False,
+            "weight": 0.5
+        },
+        "resume": {
+            "aliases": ["resume", "cv", "curriculum vitae"],
+            "type": "file",
+            "required": True,
+            "weight": 0.9
+        },
+        "cover_letter": {
+            "aliases": ["cover letter", "motivation letter"],
+            "type": "file",
+            "required": False,
+            "weight": 0.4
+        },
+        "linkedin": {
+            "aliases": ["linkedin", "linkedin profile", "linkedin url"],
+            "type": "url",
+            "required": False,
+            "weight": 0.3,
+            "validation": r'(https?:\/\/)?(www\.)?linkedin\.com\/in\/.*'
+        },
+        "website": {
+            "aliases": ["website", "portfolio", "personal website"],
+            "type": "url",
+            "required": False,
+            "weight": 0.3
+        },
+        "availability": {
+            "aliases": ["availability", "start date", "when can you start"],
+            "type": "date",
+            "required": False,
+            "weight": 0.5
+        },
+        "salary": {
+            "aliases": ["salary", "expected salary", "compensation", "pay"],
+            "type": "number",
+            "required": False,
+            "weight": 0.4
+        },
+        "references": {
+            "aliases": ["references", "referees", "reference contacts"],
+            "type": "text",
+            "required": False,
+            "weight": 0.3
+        }
     }
     
     def __init__(self):
