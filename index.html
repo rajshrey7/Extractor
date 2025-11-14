@@ -1,960 +1,1379 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OCR Text Extraction & Verification</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            overflow: hidden;
-        }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+      }
 
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+      }
 
-        .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-        }
+      .header h1 {
+        font-size: 2.5em;
+        margin-bottom: 10px;
+      }
 
-        .header p {
-            font-size: 1.1em;
-            opacity: 0.9;
-        }
+      .header p {
+        font-size: 1.1em;
+        opacity: 0.9;
+      }
 
-        .content {
-            padding: 40px;
-        }
+      .content {
+        padding: 40px;
+      }
 
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
-            border-bottom: 2px solid #e0e0e0;
-        }
+      .tabs {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 30px;
+        border-bottom: 2px solid #e0e0e0;
+      }
 
-        .tab {
-            padding: 15px 30px;
-            background: none;
-            border: none;
-            font-size: 1.1em;
-            cursor: pointer;
-            color: #666;
-            transition: all 0.3s;
-            border-bottom: 3px solid transparent;
-        }
+      .tab {
+        padding: 15px 30px;
+        background: none;
+        border: none;
+        font-size: 1.1em;
+        cursor: pointer;
+        color: #666;
+        transition: all 0.3s;
+        border-bottom: 3px solid transparent;
+      }
 
-        .tab.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
-            font-weight: bold;
-        }
+      .tab.active {
+        color: #667eea;
+        border-bottom-color: #667eea;
+        font-weight: bold;
+      }
 
-        .tab-content {
-            display: none;
-        }
+      .tab-content {
+        display: none;
+      }
 
-        .tab-content.active {
-            display: block;
-            animation: fadeIn 0.3s;
-        }
+      .tab-content.active {
+        display: block;
+        animation: fadeIn 0.3s;
+      }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
         }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
 
-        .upload-area {
-            border: 3px dashed #667eea;
-            border-radius: 15px;
-            padding: 60px;
-            text-align: center;
-            background: #f8f9ff;
-            transition: all 0.3s;
-            cursor: pointer;
-        }
+      .upload-area {
+        border: 3px dashed #667eea;
+        border-radius: 15px;
+        padding: 60px;
+        text-align: center;
+        background: #f8f9ff;
+        transition: all 0.3s;
+        cursor: pointer;
+      }
 
-        .upload-area:hover {
-            background: #f0f2ff;
-            border-color: #764ba2;
-        }
+      .upload-area:hover {
+        background: #f0f2ff;
+        border-color: #764ba2;
+      }
 
-        .upload-area.dragover {
-            background: #e8ebff;
-            border-color: #764ba2;
-            transform: scale(1.02);
-        }
+      .upload-area.dragover {
+        background: #e8ebff;
+        border-color: #764ba2;
+        transform: scale(1.02);
+      }
 
-        .upload-icon {
-            font-size: 4em;
-            margin-bottom: 20px;
-        }
+      .upload-icon {
+        font-size: 4em;
+        margin-bottom: 20px;
+      }
 
-        .upload-area input[type="file"] {
-            display: none;
-        }
+      .upload-area input[type="file"] {
+        display: none;
+      }
 
-        .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 15px 40px;
-            border-radius: 10px;
-            font-size: 1.1em;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin: 10px;
-        }
+      .btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 15px 40px;
+        border-radius: 10px;
+        font-size: 1.1em;
+        cursor: pointer;
+        transition: all 0.3s;
+        margin: 10px;
+      }
 
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
-        }
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+      }
 
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
 
-        .results {
-            margin-top: 30px;
-            display: none;
-        }
+      .results {
+        margin-top: 30px;
+        display: none;
+      }
 
-        .results.show {
-            display: block;
-        }
+      .results.show {
+        display: block;
+      }
 
-        .result-card {
-            background: #f8f9ff;
-            border-radius: 10px;
-            padding: 20px;
-            margin: 15px 0;
-            border-left: 4px solid #667eea;
-        }
+      .result-card {
+        background: #f8f9ff;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 15px 0;
+        border-left: 4px solid #667eea;
+      }
 
-        .result-card h3 {
-            color: #667eea;
-            margin-bottom: 15px;
-        }
+      .result-card h3 {
+        color: #667eea;
+        margin-bottom: 15px;
+      }
 
-        .field-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px;
-            background: white;
-            margin: 5px 0;
-            border-radius: 5px;
-            align-items: center;
-        }
+      .field-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px;
+        background: white;
+        margin: 5px 0;
+        border-radius: 5px;
+        align-items: center;
+      }
 
-        .field-label {
-            font-weight: bold;
-            color: #333;
-        }
+      .field-label {
+        font-weight: bold;
+        color: #333;
+      }
 
-        .field-value {
-            color: #666;
-            flex: 1;
-            text-align: right;
-            margin-left: 20px;
-        }
+      .field-value {
+        color: #666;
+        flex: 1;
+        text-align: right;
+        margin-left: 20px;
+      }
 
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 40px;
-        }
+      .loading {
+        display: none;
+        text-align: center;
+        padding: 40px;
+      }
 
-        .loading.show {
-            display: block;
-        }
+      .loading.show {
+        display: block;
+      }
 
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
+      .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #667eea;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+      }
 
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
         }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
 
-        .form-section {
-            margin-top: 30px;
-        }
+      .form-section {
+        margin-top: 30px;
+      }
 
-        .form-group {
-            margin: 20px 0;
-        }
+      .form-group {
+        margin: 20px 0;
+      }
 
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: bold;
-            color: #333;
-        }
+      .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: bold;
+        color: #333;
+      }
 
-        .form-group input,
-        .form-group textarea {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 1em;
-            transition: border-color 0.3s;
-        }
+      .form-group input,
+      .form-group textarea {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 1em;
+        transition: border-color 0.3s;
+      }
 
-        .form-group input:focus,
-        .form-group textarea:focus {
-            outline: none;
-            border-color: #667eea;
-        }
+      .form-group input:focus,
+      .form-group textarea:focus {
+        outline: none;
+        border-color: #667eea;
+      }
 
-        .verification-result {
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+      .verification-result {
+        padding: 15px;
+        margin: 10px 0;
+        border-radius: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
 
-        .verification-result.match {
-            background: #d4edda;
-            border-left: 4px solid #28a745;
-        }
+      .verification-result.match {
+        background: #d4edda;
+        border-left: 4px solid #28a745;
+      }
 
-        .verification-result.mismatch {
-            background: #f8d7da;
-            border-left: 4px solid #dc3545;
-        }
+      .verification-result.mismatch {
+        background: #f8d7da;
+        border-left: 4px solid #dc3545;
+      }
 
-        .confidence-badge {
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-weight: bold;
-            font-size: 0.9em;
-        }
+      .confidence-badge {
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 0.9em;
+      }
 
-        .confidence-high {
-            background: #28a745;
-            color: white;
-        }
+      .confidence-high {
+        background: #28a745;
+        color: white;
+      }
 
-        .confidence-medium {
-            background: #ffc107;
-            color: #333;
-        }
+      .confidence-medium {
+        background: #ffc107;
+        color: #333;
+      }
 
-        .confidence-low {
-            background: #dc3545;
-            color: white;
-        }
+      .confidence-low {
+        background: #dc3545;
+        color: white;
+      }
 
-        .alert {
-            padding: 15px;
-            border-radius: 8px;
-            margin: 15px 0;
-            display: none;
-        }
+      .alert {
+        padding: 15px;
+        border-radius: 8px;
+        margin: 15px 0;
+        display: none;
+      }
 
-        .alert.show {
-            display: block;
-        }
+      .alert.show {
+        display: block;
+      }
 
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
+      .alert-success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
 
-        .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
+      .alert-error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
 
-        .preview-image {
-            max-width: 100%;
-            border-radius: 10px;
-            margin: 20px 0;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
+      .preview-image {
+        max-width: 100%;
+        border-radius: 10px;
+        margin: 20px 0;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+      }
 
-        .autofill-section {
-            margin-top: 30px;
-        }
+      .autofill-section {
+        margin-top: 30px;
+      }
 
-        .match-item {
-            background: white;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-        }
+      .match-item {
+        background: white;
+        padding: 15px;
+        margin: 10px 0;
+        border-radius: 8px;
+        border-left: 4px solid #667eea;
+      }
 
-        .match-item.no-match {
-            border-left-color: #dc3545;
-        }
+      .match-item.no-match {
+        border-left-color: #dc3545;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div class="container">
-        <div class="header">
-            <h1>🔍 OCR Text Extraction & Verification</h1>
-            <p>Extract text from documents, auto-fill forms, and verify data accuracy</p>
+      <div class="header">
+        <h1>🔍 OCR Text Extraction & Verification</h1>
+        <p>
+          Extract text from documents, auto-fill forms, and verify data accuracy
+        </p>
+      </div>
+
+      <div class="content">
+        <div class="tabs">
+          <button class="tab active" onclick="switchTab('extract')">
+            Extract Text
+          </button>
+          <button class="tab" onclick="switchTab('verify')">Verify Data</button>
+          <button class="tab" onclick="switchTab('jobform')">
+            Job Form Filler
+          </button>
+          <button class="tab" onclick="switchTab('autofill')">
+            Auto-Fill Form
+          </button>
         </div>
 
-        <div class="content">
-            <div class="tabs">
-                <button class="tab active" onclick="switchTab('extract')">Extract Text</button>
-                <button class="tab" onclick="switchTab('verify')">Verify Data</button>
-                <button class="tab" onclick="switchTab('jobform')">Job Form Filler</button>
-                <button class="tab" onclick="switchTab('autofill')">Auto-Fill Form</button>
+        <!-- Extract Tab -->
+        <div id="extract" class="tab-content active">
+          <div
+            class="upload-area"
+            id="uploadArea"
+            onclick="document.getElementById('fileInput').click()"
+          >
+            <div class="upload-icon">📄</div>
+            <h2>Upload Document (Image or PDF)</h2>
+            <p>Click to browse or drag and drop your file here</p>
+            <p style="color: #666; margin-top: 10px">
+              Supports: JPG, PNG, JPEG, PDF
+            </p>
+            <input type="file" id="fileInput" accept="image/*,.pdf" />
+          </div>
+
+          <div id="imagePreview" style="display: none; text-align: center">
+            <img
+              id="previewImg"
+              class="preview-image"
+              alt="Preview"
+              style="max-width: 100%; max-height: 400px; border-radius: 8px"
+            />
+            <div
+              id="pdfPreview"
+              style="
+                display: none;
+                padding: 20px;
+                background: #f8f9fa;
+                border-radius: 8px;
+                margin-top: 10px;
+              "
+            >
+              <p style="font-size: 3em; margin: 0">📄</p>
+              <p
+                style="margin: 10px 0 0 0; font-weight: bold"
+                id="pdfFileName"
+              ></p>
+              <p
+                style="margin: 5px 0 0 0; color: #666; font-size: 0.9em"
+                id="pdfFileSize"
+              ></p>
             </div>
+          </div>
 
-            <!-- Extract Tab -->
-            <div id="extract" class="tab-content active">
-                <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
-                    <div class="upload-icon">📄</div>
-                    <h2>Upload Document (Image or PDF)</h2>
-                    <p>Click to browse or drag and drop your file here</p>
-                    <p style="color: #666; margin-top: 10px;">Supports: JPG, PNG, JPEG, PDF</p>
-                    <input type="file" id="fileInput" accept="image/*,.pdf">
-                </div>
-
-                <div id="imagePreview" style="display: none; text-align: center;">
-                    <img id="previewImg" class="preview-image" alt="Preview" style="max-width: 100%; max-height: 400px; border-radius: 8px;">
-                    <div id="pdfPreview" style="display: none; padding: 20px; background: #f8f9fa; border-radius: 8px; margin-top: 10px;">
-                        <p style="font-size: 3em; margin: 0;">📄</p>
-                        <p style="margin: 10px 0 0 0; font-weight: bold;" id="pdfFileName"></p>
-                        <p style="margin: 5px 0 0 0; color: #666; font-size: 0.9em;" id="pdfFileSize"></p>
-                    </div>
-                </div>
-
-                <div style="text-align: center; margin-top: 20px;">
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: inline-flex; align-items: center; cursor: pointer;">
-                            <input type="checkbox" id="useOpenAI" style="margin-right: 8px; width: 18px; height: 18px;">
-                            <span>🤖 Use Google Vision API (Direct Image to JSON)</span>
-                        </label>
-                    </div>
-                    <button class="btn" id="processBtn" onclick="processImage()" disabled>Process Image</button>
-                    <br>
-                    <small style="color: #666; margin-top: 10px; display: block;">
-                        <strong>Google Vision:</strong> Uses Google Cloud Vision API to extract structured JSON from images.<br>
-                        <strong>YOLO+EasyOCR:</strong> Uses your trained YOLO model for field detection (default).
-                    </small>
-                </div>
-
-                <div class="loading" id="loading">
-                    <div class="spinner"></div>
-                    <p>Processing image... Please wait</p>
-                </div>
-
-                <div class="alert" id="alert"></div>
-
-                <div class="results" id="results">
-                    <div class="result-card" style="background: #e8f5e9; border-left: 4px solid #4caf50;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <h3>📄 Extracted Data (JSON Format)</h3>
-                            <button onclick="copyExtractedJSON()" style="padding: 8px 16px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">📋 Copy JSON</button>
-                        </div>
-                        <pre id="extractedJSON" style="background: white; padding: 15px; border-radius: 8px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6; border: 1px solid #ddd; max-height: 400px; overflow-y: auto; min-height: 50px; white-space: pre-wrap; word-wrap: break-word;">{}</pre>
-                        <small style="color: #666; display: block; margin-top: 8px;">✓ This JSON is automatically populated in the "Verify Data" and "Auto-Fill Form" tabs</small>
-                    </div>
-                    <div class="result-card">
-                        <h3>📋 Extracted Fields (Formatted View)</h3>
-                        <div id="extractedFields"></div>
-                    </div>
-                    <div class="result-card" id="generalTextCard" style="display: none;">
-                        <h3>📝 General Text</h3>
-                        <div id="generalText"></div>
-                    </div>
-                </div>
+          <div style="text-align: center; margin-top: 20px">
+            <div style="margin-bottom: 10px">
+              <label
+                style="
+                  display: inline-flex;
+                  align-items: center;
+                  cursor: pointer;
+                "
+              >
+                <input
+                  type="checkbox"
+                  id="useOpenAI"
+                  style="margin-right: 8px; width: 18px; height: 18px"
+                />
+                <span>🤖 Use Google Vision API (Direct Image to JSON)</span>
+              </label>
             </div>
+            <button
+              class="btn"
+              id="processBtn"
+              onclick="processImage()"
+              disabled
+            >
+              Process Image
+            </button>
+            <br />
+            <small style="color: #666; margin-top: 10px; display: block">
+              <strong>Google Vision:</strong> Uses Google Cloud Vision API to
+              extract structured JSON from images.<br />
+              <strong>YOLO+EasyOCR:</strong> Uses your trained YOLO model for
+              field detection (default).
+            </small>
+          </div>
 
-            <!-- Verify Tab -->
-            <div id="verify" class="tab-content">
-                <div class="form-section">
-                    <h2>🔍 Advanced OCR Verification System</h2>
-                    <p style="color: #666; margin-bottom: 20px;">Validates OCR data accuracy, format, and detects errors</p>
-                    
-                    <div class="form-group">
-                        <label>📋 Structured Data (JSON) - OCR Extracted</label>
-                        <textarea id="extractedData" rows="8" placeholder='{"name": "John Doe", "dob": "01/01/1990", "mobile": "1234567890", "email": "john@example.com", ...}'></textarea>
-                        <small style="color: #666;">Must be valid JSON object format: {"field": "value", ...}</small>
-                        <button type="button" onclick="validateJSONForVerify('extractedData')" style="margin-top: 5px; padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">✓ Validate JSON</button>
-                    </div>
+          <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing image... Please wait</p>
+          </div>
 
-                    <div class="form-group">
-                        <label>📄 Original Data (JSON) - Optional</label>
-                        <textarea id="originalData" rows="6" placeholder='{"name": "John Doe", "dob": "01/01/1990", ...}'></textarea>
-                        <small style="color: #666;">Optional: Original/reference data for comparison</small>
-                    </div>
+          <div class="alert" id="alert"></div>
 
-                    <div class="form-group">
-                        <label>📝 OCR Text Block (Optional)</label>
-                        <textarea id="ocrTextBlock" rows="4" placeholder="Raw OCR extracted text from the document..."></textarea>
-                        <small style="color: #666;">Optional: Raw OCR text for additional validation</small>
-                    </div>
-
-                    <div style="text-align: center;">
-                        <button class="btn" onclick="verifyData()">🔍 Verify & Validate Data</button>
-                    </div>
-
-                    <div class="loading" id="verifyLoading">
-                        <div class="spinner"></div>
-                        <p>Verifying data... Please wait</p>
-                    </div>
-
-                    <div class="alert" id="verifyAlert"></div>
-
-                    <div class="results" id="verifyResults">
-                        <!-- Overall Status -->
-                        <div class="result-card" id="overallStatusCard" style="margin-bottom: 20px;">
-                            <h3 id="overallStatusTitle">📊 Verification Status</h3>
-                            <div id="overallStatusContent"></div>
-                        </div>
-                        
-                        <!-- Cleaned Data -->
-                        <div class="result-card" id="cleanedDataCard" style="display: none;">
-                            <h3>✨ Cleaned & Verified Data</h3>
-                            <pre id="cleanedDataDisplay" style="background: #f8f9ff; padding: 15px; border-radius: 8px; overflow-x: auto;"></pre>
-                        </div>
-                        
-                        <!-- Verification Report -->
-                        <div class="result-card">
-                            <h3>📋 Detailed Verification Report</h3>
-                            <div id="verificationDetails"></div>
-                        </div>
-                        
-                        <!-- Summary -->
-                        <div class="result-card">
-                            <h3>📊 Summary Statistics</h3>
-                            <div id="summaryStats"></div>
-                        </div>
-                    </div>
-                </div>
+          <div class="results" id="results">
+            <div
+              class="result-card"
+              style="background: #e8f5e9; border-left: 4px solid #4caf50"
+            >
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  margin-bottom: 10px;
+                "
+              >
+                <h3>📄 Extracted Data (JSON Format)</h3>
+                <button
+                  onclick="copyExtractedJSON()"
+                  style="
+                    padding: 8px 16px;
+                    background: #4caf50;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 14px;
+                  "
+                >
+                  📋 Copy JSON
+                </button>
+              </div>
+              <pre
+                id="extractedJSON"
+                style="
+                  background: white;
+                  padding: 15px;
+                  border-radius: 8px;
+                  overflow-x: auto;
+                  font-family: 'Courier New', monospace;
+                  font-size: 13px;
+                  line-height: 1.6;
+                  border: 1px solid #ddd;
+                  max-height: 400px;
+                  overflow-y: auto;
+                  min-height: 50px;
+                  white-space: pre-wrap;
+                  word-wrap: break-word;
+                "
+              >
+{}</pre
+              >
+              <small style="color: #666; display: block; margin-top: 8px"
+                >✓ This JSON is automatically populated in the "Verify Data" and
+                "Auto-Fill Form" tabs</small
+              >
             </div>
-
-            <!-- Job Form Filler Tab -->
-            <div id="jobform" class="tab-content">
-                <div class="form-section">
-                    <h2>💼 Automatic Job Application Form Filler</h2>
-                    <p style="color: #666; margin-bottom: 20px;">Upload your document or resume, extract data, and automatically fill job application forms with AI</p>
-                    
-                    <!-- Resume Upload Section -->
-                    <div class="form-group" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                        <label style="font-weight: bold; margin-bottom: 10px; display: block;">📄 Upload Resume (PDF) - For AI-Powered Filling</label>
-                        <input type="file" id="resumeFile" accept=".pdf" style="margin-bottom: 10px;">
-                        <button class="btn" onclick="processResume()" style="background: #667eea;">Process Resume with AI</button>
-                        <div id="resumeStatus" style="margin-top: 10px; font-size: 0.9em;"></div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>📋 Google Form URL</label>
-                        <input type="text" id="jobFormUrl" placeholder="https://docs.google.com/forms/d/e/.../viewform" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1em;">
-                        <small style="color: #666;">Paste the Google Form URL for the job application</small>
-                    </div>
-
-                    <div class="form-group" id="aiModelSelection" style="display: none; margin: 15px 0;">
-                        <label>🤖 AI Model Selection</label>
-                        <select id="aiModel" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1em;">
-                            <option value="gryphe/mythomax-l2-13b">MythoMax L2 13B (Recommended)</option>
-                            <option value="mistralai/mistral-7b-instruct:free">Mistral 7B Instruct (Free)</option>
-                            <option value="deepseek/deepseek-r1-zero:free">DeepSeek R1 (Free)</option>
-                            <option value="meta-llama/llama-2-70b-chat:free">Llama 2 70B (Free)</option>
-                            <option value="openai/gpt-4">GPT-4 (Paid)</option>
-                            <option value="openai/gpt-3.5-turbo">GPT-3.5 Turbo (Paid)</option>
-                            <option value="anthropic/claude-2.1">Claude 2.1 (Paid)</option>
-                        </select>
-                    </div>
-
-                    <div style="text-align: center; margin: 20px 0;">
-                        <button class="btn" onclick="analyzeJobForm()">🔍 Analyze Form</button>
-                        <button class="btn" onclick="fillJobForm()" id="fillJobFormBtn" style="display: none; background: #28a745;">✨ Fill Form with OCR Data</button>
-                        <button class="btn" onclick="fillJobFormAI()" id="fillJobFormAIBtn" style="display: none; background: #667eea;">🤖 Fill Form with AI (Resume Required)</button>
-                    </div>
-
-                    <div class="loading" id="jobFormLoading">
-                        <div class="spinner"></div>
-                        <p>Processing... Please wait</p>
-                    </div>
-
-                    <div class="alert" id="jobFormAlert"></div>
-
-                    <!-- Form Questions Display -->
-                    <div class="results" id="formQuestionsResult" style="display: none;">
-                        <div class="result-card">
-                            <h3>📝 Form Questions</h3>
-                            <div id="formQuestionsDisplay"></div>
-                        </div>
-                    </div>
-
-                    <!-- Filled Form Results -->
-                    <div class="results" id="jobFormResults" style="display: none;">
-                        <div class="result-card">
-                            <h3>✅ Form Filled Successfully!</h3>
-                            <div id="filledFormDisplay"></div>
-                            <!-- Form Data Summary -->
-                            <div id="formDataSummary" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; display: none;">
-                                <h4>📋 Form Data Summary (JSON)</h4>
-                                <pre id="formDataJSON" style="background: white; padding: 10px; border-radius: 5px; overflow-x: auto; max-height: 300px; font-size: 0.9em; white-space: pre-wrap; word-wrap: break-word;"></pre>
-                            </div>
-                            
-                            <div style="margin-top: 20px; text-align: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
-                                <button class="btn" onclick="submitJobForm()" style="background: #28a745;">🚀 Submit Application</button>
-                                <button class="btn" onclick="editJobForm()" style="background: #6c757d;">✏️ Edit Before Submit</button>
-                                <button class="btn" onclick="showFormData()" style="background: #6f42c1;">👁️ View Form Data</button>
-                                <button class="btn" onclick="downloadFilledForm()" style="background: #17a2b8;">📥 Download JSON</button>
-                                <button class="btn" onclick="copyFilledForm()" style="background: #ffc107; color: #000;">📋 Copy Data</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <div class="result-card">
+              <h3>📋 Extracted Fields (Formatted View)</h3>
+              <div id="extractedFields"></div>
             </div>
-
-            <!-- Auto-Fill Tab -->
-            <div id="autofill" class="tab-content">
-                <div class="form-section">
-                    <h2>Form Auto-Fill</h2>
-                    <p style="color: #666; margin-bottom: 20px;">Match extracted data to form fields</p>
-                    
-                    <div class="form-group">
-                        <label>Form Fields (one per line or JSON array)</label>
-                        <textarea id="formFields" rows="6" placeholder="Name&#10;Date of Birth&#10;Passport No&#10;..."></textarea>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Extracted Data (JSON)</label>
-                        <textarea id="autofillExtractedData" rows="8" placeholder='{"Name": "John Doe", "Date of Birth": "01/01/1990", ...}'></textarea>
-                        <small style="color: #666;">Must be valid JSON format: {"field": "value", ...}</small>
-                        <button type="button" onclick="validateJSON('autofillExtractedData')" style="margin-top: 5px; padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">✓ Validate JSON</button>
-                    </div>
-
-                    <div style="text-align: center;">
-                        <button class="btn" onclick="autofillForm()">Match Fields</button>
-                    </div>
-
-                    <div class="loading" id="autofillLoading">
-                        <div class="spinner"></div>
-                        <p>Matching fields... Please wait</p>
-                    </div>
-
-                    <div class="alert" id="autofillAlert"></div>
-
-                    <div class="results" id="autofillResults">
-                        <div class="result-card">
-                            <h3>🎯 Field Matches</h3>
-                            <div id="matchDetails"></div>
-                        </div>
-                    </div>
-                </div>
+            <div class="result-card" id="generalTextCard" style="display: none">
+              <h3>📝 General Text</h3>
+              <div id="generalText"></div>
             </div>
+          </div>
         </div>
+
+        <!-- Verify Tab -->
+        <div id="verify" class="tab-content">
+          <div class="form-section">
+            <h2>🔍 Advanced OCR Verification System</h2>
+            <p style="color: #666; margin-bottom: 20px">
+              Validates OCR data accuracy, format, and detects errors
+            </p>
+
+            <div class="form-group">
+              <label>📋 Structured Data (JSON) - OCR Extracted</label>
+              <textarea
+                id="extractedData"
+                rows="8"
+                placeholder="{\"name\": \"John Doe\", \"dob\": \"01/01/1990\", \"mobile\": \"1234567890\", \"email\": \"john@example.com\", ...}"
+              ></textarea>
+              <small style="color: #666"
+                >Must be valid JSON object format: {"field": "value",
+                ...}</small
+              >
+              <button
+                type="button"
+                onclick="validateJSONForVerify('extractedData')"
+                style="
+                  margin-top: 5px;
+                  padding: 5px 10px;
+                  background: #667eea;
+                  color: white;
+                  border: none;
+                  border-radius: 4px;
+                  cursor: pointer;
+                  font-size: 12px;
+                "
+              >
+                ✓ Validate JSON
+              </button>
+            </div>
+
+            <div class="form-group">
+              <label>📄 Original Data (JSON) - Optional</label>
+              <textarea
+                id="originalData"
+                rows="6"
+                placeholder='{"name": "John Doe", "dob": "01/01/1990", ...}'
+              ></textarea>
+              <small style="color: #666"
+                >Optional: Original/reference data for comparison</small
+              >
+            </div>
+
+            <div class="form-group">
+              <label>📝 OCR Text Block (Optional)</label>
+              <textarea
+                id="ocrTextBlock"
+                rows="4"
+                placeholder="Raw OCR extracted text from the document..."
+              ></textarea>
+              <small style="color: #666"
+                >Optional: Raw OCR text for additional validation</small
+              >
+            </div>
+
+            <div style="text-align: center">
+              <button class="btn" onclick="verifyData()">
+                🔍 Verify & Validate Data
+              </button>
+            </div>
+
+            <div class="loading" id="verifyLoading">
+              <div class="spinner"></div>
+              <p>Verifying data... Please wait</p>
+            </div>
+
+            <div class="alert" id="verifyAlert"></div>
+
+            <div class="results" id="verifyResults">
+              <!-- Overall Status -->
+              <div
+                class="result-card"
+                id="overallStatusCard"
+                style="margin-bottom: 20px"
+              >
+                <h3 id="overallStatusTitle">📊 Verification Status</h3>
+                <div id="overallStatusContent"></div>
+              </div>
+
+              <!-- Cleaned Data -->
+              <div
+                class="result-card"
+                id="cleanedDataCard"
+                style="display: none"
+              >
+                <h3>✨ Cleaned & Verified Data</h3>
+                <pre
+                  id="cleanedDataDisplay"
+                  style="
+                    background: #f8f9ff;
+                    padding: 15px;
+                    border-radius: 8px;
+                    overflow-x: auto;
+                  "
+                ></pre>
+              </div>
+
+              <!-- Verification Report -->
+              <div class="result-card">
+                <h3>📋 Detailed Verification Report</h3>
+                <div id="verificationDetails"></div>
+              </div>
+
+              <!-- Summary -->
+              <div class="result-card">
+                <h3>📊 Summary Statistics</h3>
+                <div id="summaryStats"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Job Form Filler Tab -->
+        <div id="jobform" class="tab-content">
+          <div class="form-section">
+            <h2>💼 Automatic Job Application Form Filler</h2>
+            <p style="color: #666; margin-bottom: 20px">
+              Upload your document or resume, extract data, and automatically
+              fill job application forms with AI
+            </p>
+
+            <!-- Resume Upload Section -->
+            <div
+              class="form-group"
+              style="
+                margin-bottom: 20px;
+                padding: 15px;
+                background: #f8f9fa;
+                border-radius: 8px;
+              "
+            >
+              <label
+                style="font-weight: bold; margin-bottom: 10px; display: block"
+                >📄 Upload Resume (PDF) - For AI-Powered Filling</label
+              >
+              <input
+                type="file"
+                id="resumeFile"
+                accept=".pdf"
+                style="margin-bottom: 10px"
+              />
+              <button
+                class="btn"
+                onclick="processResume()"
+                style="background: #667eea"
+              >
+                Process Resume with AI
+              </button>
+              <div
+                id="resumeStatus"
+                style="margin-top: 10px; font-size: 0.9em"
+              ></div>
+            </div>
+
+            <div class="form-group">
+              <label>📋 Google Form URL</label>
+              <input
+                type="text"
+                id="jobFormUrl"
+                placeholder="https://docs.google.com/forms/d/e/.../viewform"
+                style="
+                  width: 100%;
+                  padding: 12px;
+                  border: 2px solid #e0e0e0;
+                  border-radius: 8px;
+                  font-size: 1em;
+                "
+              />
+              <small style="color: #666"
+                >Paste the Google Form URL for the job application</small
+              >
+            </div>
+
+            <div
+              class="form-group"
+              id="aiModelSelection"
+              style="display: none; margin: 15px 0"
+            >
+              <label>🤖 AI Model Selection</label>
+              <select
+                id="aiModel"
+                style="
+                  width: 100%;
+                  padding: 12px;
+                  border: 2px solid #e0e0e0;
+                  border-radius: 8px;
+                  font-size: 1em;
+                "
+              >
+                <option value="gryphe/mythomax-l2-13b">
+                  MythoMax L2 13B (Recommended)
+                </option>
+                <option value="mistralai/mistral-7b-instruct:free">
+                  Mistral 7B Instruct (Free)
+                </option>
+                <option value="deepseek/deepseek-r1-zero:free">
+                  DeepSeek R1 (Free)
+                </option>
+                <option value="meta-llama/llama-2-70b-chat:free">
+                  Llama 2 70B (Free)
+                </option>
+                <option value="openai/gpt-4">GPT-4 (Paid)</option>
+                <option value="openai/gpt-3.5-turbo">
+                  GPT-3.5 Turbo (Paid)
+                </option>
+                <option value="anthropic/claude-2.1">Claude 2.1 (Paid)</option>
+              </select>
+            </div>
+
+            <div style="text-align: center; margin: 20px 0">
+              <button class="btn" onclick="analyzeJobForm()">
+                🔍 Analyze Form
+              </button>
+              <button
+                class="btn"
+                onclick="fillJobForm()"
+                id="fillJobFormBtn"
+                style="display: none; background: #28a745"
+              >
+                ✨ Fill Form with OCR Data
+              </button>
+              <button
+                class="btn"
+                onclick="fillJobFormAI()"
+                id="fillJobFormAIBtn"
+                style="display: none; background: #667eea"
+              >
+                🤖 Fill Form with AI (Resume Required)
+              </button>
+            </div>
+
+            <div class="loading" id="jobFormLoading">
+              <div class="spinner"></div>
+              <p>Processing... Please wait</p>
+            </div>
+
+            <div class="alert" id="jobFormAlert"></div>
+
+            <!-- Form Questions Display -->
+            <div class="results" id="formQuestionsResult" style="display: none">
+              <div class="result-card">
+                <h3>📝 Form Questions</h3>
+                <div id="formQuestionsDisplay"></div>
+              </div>
+            </div>
+
+            <!-- Filled Form Results -->
+            <div class="results" id="jobFormResults" style="display: none">
+              <div class="result-card">
+                <h3>✅ Form Filled Successfully!</h3>
+                <div id="filledFormDisplay"></div>
+                <!-- Form Data Summary -->
+                <div
+                  id="formDataSummary"
+                  style="
+                    margin-top: 20px;
+                    padding: 15px;
+                    background: #f8f9fa;
+                    border-radius: 8px;
+                    display: none;
+                  "
+                >
+                  <h4>📋 Form Data Summary (JSON)</h4>
+                  <pre
+                    id="formDataJSON"
+                    style="
+                      background: white;
+                      padding: 10px;
+                      border-radius: 5px;
+                      overflow-x: auto;
+                      max-height: 300px;
+                      font-size: 0.9em;
+                      white-space: pre-wrap;
+                      word-wrap: break-word;
+                    "
+                  ></pre>
+                </div>
+
+                <div
+                  style="
+                    margin-top: 20px;
+                    text-align: center;
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 10px;
+                    justify-content: center;
+                  "
+                >
+                  <button
+                    class="btn"
+                    onclick="submitJobForm()"
+                    style="background: #28a745"
+                  >
+                    🚀 Submit Application
+                  </button>
+                  <button
+                    class="btn"
+                    onclick="editJobForm()"
+                    style="background: #6c757d"
+                  >
+                    ✏️ Edit Before Submit
+                  </button>
+                  <button
+                    class="btn"
+                    onclick="showFormData()"
+                    style="background: #6f42c1"
+                  >
+                    👁️ View Form Data
+                  </button>
+                  <button
+                    class="btn"
+                    onclick="downloadFilledForm()"
+                    style="background: #17a2b8"
+                  >
+                    📥 Download JSON
+                  </button>
+                  <button
+                    class="btn"
+                    onclick="copyFilledForm()"
+                    style="background: #ffc107; color: #000"
+                  >
+                    📋 Copy Data
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Auto-Fill Tab -->
+        <div id="autofill" class="tab-content">
+          <div class="form-section">
+            <h2>Form Auto-Fill</h2>
+            <p style="color: #666; margin-bottom: 20px">
+              Match extracted data to form fields
+            </p>
+
+            <div class="form-group">
+              <label>Form Fields (one per line or JSON array)</label>
+              <textarea
+                id="formFields"
+                rows="6"
+                placeholder="Name&#10;Date of Birth&#10;Passport No&#10;..."
+              ></textarea>
+            </div>
+
+            <div class="form-group">
+              <label>Extracted Data (JSON)</label>
+              <textarea
+                id="autofillExtractedData"
+                rows="8"
+                placeholder='{"Name": "John Doe", "Date of Birth": "01/01/1990", ...}'
+              ></textarea>
+              <small style="color: #666"
+                >Must be valid JSON format: {"field": "value", ...}</small
+              >
+              <button
+                type="button"
+                onclick="validateJSON('autofillExtractedData')"
+                style="
+                  margin-top: 5px;
+                  padding: 5px 10px;
+                  background: #667eea;
+                  color: white;
+                  border: none;
+                  border-radius: 4px;
+                  cursor: pointer;
+                "
+              >
+                ✓ Validate JSON
+              </button>
+            </div>
+
+            <div style="text-align: center">
+              <button class="btn" onclick="autofillForm()">Match Fields</button>
+            </div>
+
+            <div class="loading" id="autofillLoading">
+              <div class="spinner"></div>
+              <p>Matching fields... Please wait</p>
+            </div>
+
+            <div class="alert" id="autofillAlert"></div>
+
+            <div class="results" id="autofillResults">
+              <div class="result-card">
+                <h3>🎯 Field Matches</h3>
+                <div id="matchDetails"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script>
-        let extractedDataGlobal = {};
-        let currentJobFormUrl = null;
-        let currentFilledFormData = null;
-        let resumeIndexPath = null;
+      let extractedDataGlobal = {};
+      let currentJobFormUrl = null;
+      let currentFilledFormData = null;
+      let resumeIndexPath = null;
 
-        // Tab switching
-        function switchTab(tabName) {
-            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
-            event.target.classList.add('active');
-            document.getElementById(tabName).classList.add('active');
-            
-            // Auto-populate extracted data in job form tab if available
-            if (tabName === 'jobform' && Object.keys(extractedDataGlobal).length > 0) {
-                // Data will be used when filling form
-            }
+      // Tab switching
+      function switchTab(tabName) {
+        document
+          .querySelectorAll(".tab")
+          .forEach((tab) => tab.classList.remove("active"));
+        document
+          .querySelectorAll(".tab-content")
+          .forEach((content) => content.classList.remove("active"));
+
+        event.target.classList.add("active");
+        document.getElementById(tabName).classList.add("active");
+
+        // Auto-populate extracted data in job form tab if available
+        if (
+          tabName === "jobform" &&
+          Object.keys(extractedDataGlobal).length > 0
+        ) {
+          // Data will be used when filling form
+        }
+      }
+
+      // File upload handling
+      const uploadArea = document.getElementById("uploadArea");
+      const fileInput = document.getElementById("fileInput");
+      const processBtn = document.getElementById("processBtn");
+
+      uploadArea.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        uploadArea.classList.add("dragover");
+      });
+
+      uploadArea.addEventListener("dragleave", () => {
+        uploadArea.classList.remove("dragover");
+      });
+
+      uploadArea.addEventListener("drop", (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove("dragover");
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+          handleFile(files[0]);
+        }
+      });
+
+      fileInput.addEventListener("change", (e) => {
+        if (e.target.files.length > 0) {
+          handleFile(e.target.files[0]);
+        }
+      });
+
+      function handleFile(file) {
+        const isImage = file.type.startsWith("image/");
+        const isPDF =
+          file.name.toLowerCase().endsWith(".pdf") ||
+          file.type === "application/pdf";
+
+        if (!isImage && !isPDF) {
+          showAlert(
+            "alert",
+            "Please upload an image file (JPG, PNG, JPEG) or PDF file",
+            "error"
+          );
+          return;
         }
 
-        // File upload handling
-        const uploadArea = document.getElementById('uploadArea');
-        const fileInput = document.getElementById('fileInput');
-        const processBtn = document.getElementById('processBtn');
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const preview = document.getElementById("imagePreview");
+          const previewImg = document.getElementById("previewImg");
+          const pdfPreview = document.getElementById("pdfPreview");
+          const pdfFileName = document.getElementById("pdfFileName");
+          const pdfFileSize = document.getElementById("pdfFileSize");
 
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
+          if (isImage) {
+            // Show image preview
+            previewImg.src = e.target.result;
+            previewImg.style.display = "block";
+            pdfPreview.style.display = "none";
+          } else if (isPDF) {
+            // Show PDF preview
+            previewImg.style.display = "none";
+            pdfPreview.style.display = "block";
+            pdfFileName.textContent = file.name;
+            const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            pdfFileSize.textContent = `Size: ${fileSizeMB} MB`;
+          }
 
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('dragover');
-        });
+          preview.style.display = "block";
+          processBtn.disabled = false;
+        };
+        reader.readAsDataURL(file);
+      }
 
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                handleFile(files[0]);
-            }
-        });
-
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleFile(e.target.files[0]);
-            }
-        });
-
-        function handleFile(file) {
-            const isImage = file.type.startsWith('image/');
-            const isPDF = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
-            
-            if (!isImage && !isPDF) {
-                showAlert('alert', 'Please upload an image file (JPG, PNG, JPEG) or PDF file', 'error');
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const preview = document.getElementById('imagePreview');
-                const previewImg = document.getElementById('previewImg');
-                const pdfPreview = document.getElementById('pdfPreview');
-                const pdfFileName = document.getElementById('pdfFileName');
-                const pdfFileSize = document.getElementById('pdfFileSize');
-                
-                if (isImage) {
-                    // Show image preview
-                    previewImg.src = e.target.result;
-                    previewImg.style.display = 'block';
-                    pdfPreview.style.display = 'none';
-                } else if (isPDF) {
-                    // Show PDF preview
-                    previewImg.style.display = 'none';
-                    pdfPreview.style.display = 'block';
-                    pdfFileName.textContent = file.name;
-                    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-                    pdfFileSize.textContent = `Size: ${fileSizeMB} MB`;
-                }
-                
-                preview.style.display = 'block';
-                processBtn.disabled = false;
-            };
-            reader.readAsDataURL(file);
+      async function processImage() {
+        const fileInput = document.getElementById("fileInput");
+        if (!fileInput.files[0]) {
+          showAlert(
+            "alert",
+            "Please select an image or PDF file first",
+            "error"
+          );
+          return;
         }
 
-        async function processImage() {
-            const fileInput = document.getElementById('fileInput');
-            if (!fileInput.files[0]) {
-                showAlert('alert', 'Please select an image or PDF file first', 'error');
-                return;
-            }
+        const formData = new FormData();
+        formData.append("file", fileInput.files[0]);
+        const useOpenAI = document.getElementById("useOpenAI");
+        formData.append(
+          "use_openai",
+          useOpenAI && useOpenAI.checked ? "true" : "false"
+        );
 
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
-            const useOpenAI = document.getElementById('useOpenAI');
-            formData.append('use_openai', (useOpenAI && useOpenAI.checked) ? 'true' : 'false');
+        document.getElementById("loading").classList.add("show");
+        document.getElementById("results").classList.remove("show");
+        hideAlert("alert");
 
-            document.getElementById('loading').classList.add('show');
-            document.getElementById('results').classList.remove('show');
-            hideAlert('alert');
+        try {
+          const response = await fetch("/api/upload", {
+            method: "POST",
+            body: formData,
+          });
 
+          if (!response.ok) {
+            // Try to get error details from response
+            let errorDetail = response.statusText;
             try {
-                const response = await fetch('/api/upload', {
-                    method: 'POST',
-                    body: formData
-                });
+              const errorData = await response.json();
+              errorDetail =
+                errorData.detail ||
+                errorData.error ||
+                errorData.message ||
+                errorDetail;
+            } catch {
+              const errorText = await response.text();
+              errorDetail = errorText.substring(0, 200) || errorDetail;
+            }
+            throw new Error(
+              `Server error (${response.status}): ${errorDetail}`
+            );
+          }
 
-                if (!response.ok) {
-                    // Try to get error details from response
-                    let errorDetail = response.statusText;
-                    try {
-                        const errorData = await response.json();
-                        errorDetail = errorData.detail || errorData.error || errorData.message || errorDetail;
-                    } catch {
-                        const errorText = await response.text();
-                        errorDetail = errorText.substring(0, 200) || errorDetail;
-                    }
-                    throw new Error(`Server error (${response.status}): ${errorDetail}`);
-                }
+          const data = await response.json();
 
-                const data = await response.json();
+          if (data.success) {
+            // Debug logging
+            console.log("API Response:", data);
+            console.log("extracted_fields:", data.extracted_fields);
+            console.log("extracted_fields type:", typeof data.extracted_fields);
 
-                if (data.success) {
-                    // Debug logging
-                    console.log("API Response:", data);
-                    console.log("extracted_fields:", data.extracted_fields);
-                    console.log("extracted_fields type:", typeof data.extracted_fields);
-                    
-                    extractedDataGlobal = data.extracted_fields || {};
-                    
-                    // Ensure we have extracted fields - handle all cases
-                    let extractedFields = {};
-                    
-                    if (data.extracted_fields) {
-                        if (typeof data.extracted_fields === 'object' && !Array.isArray(data.extracted_fields)) {
-                            extractedFields = data.extracted_fields;
-                        } else {
-                            extractedFields = {
-                                "error": "Invalid extracted_fields format",
-                                "raw": String(data.extracted_fields)
-                            };
-                        }
-                    }
-                    
-                    // If empty, show a message with debug info
-                    if (Object.keys(extractedFields).length === 0) {
-                        extractedFields = {
-                            "message": "No structured fields detected",
-                            "general_text_available": data.general_text && data.general_text.length > 0,
-                            "general_text_count": data.general_text ? data.general_text.length : 0,
-                            "found_idcard": data.found_idcard || false,
-                            "ai_error": data.ai_error || null,
-                            "debug": "No fields extracted from image"
-                        };
-                    }
-                    
-                    // Format JSON with proper indentation
-                    const jsonString = JSON.stringify(extractedFields, null, 2);
-                    
-                    // Display JSON in formatted view
-                    const jsonDisplay = document.getElementById('extractedJSON');
-                    if (jsonDisplay) {
-                        jsonDisplay.textContent = jsonString;
-                    } else {
-                        console.error("extractedJSON element not found!");
-                    }
-                    
-                    console.log("JSON String:", jsonString);
-                    
-                    // Display extracted fields in formatted view
-                    const fieldsDiv = document.getElementById('extractedFields');
-                    fieldsDiv.innerHTML = '';
-                    
-                    if (Object.keys(data.extracted_fields).length > 0) {
-                        for (const [field, value] of Object.entries(data.extracted_fields)) {
-                            const fieldItem = document.createElement('div');
-                            fieldItem.className = 'field-item';
-                            fieldItem.innerHTML = `
+            extractedDataGlobal = data.extracted_fields || {};
+
+            // Ensure we have extracted fields - handle all cases
+            let extractedFields = {};
+
+            if (data.extracted_fields) {
+              if (
+                typeof data.extracted_fields === "object" &&
+                !Array.isArray(data.extracted_fields)
+              ) {
+                extractedFields = data.extracted_fields;
+              } else {
+                extractedFields = {
+                  error: "Invalid extracted_fields format",
+                  raw: String(data.extracted_fields),
+                };
+              }
+            }
+
+            // If empty, show a message with debug info
+            if (Object.keys(extractedFields).length === 0) {
+              extractedFields = {
+                message: "No structured fields detected",
+                general_text_available:
+                  data.general_text && data.general_text.length > 0,
+                general_text_count: data.general_text
+                  ? data.general_text.length
+                  : 0,
+                found_idcard: data.found_idcard || false,
+                ai_error: data.ai_error || null,
+                debug: "No fields extracted from image",
+              };
+            }
+
+            // Format JSON with proper indentation
+            const jsonString = JSON.stringify(extractedFields, null, 2);
+
+            // Display JSON in formatted view
+            const jsonDisplay = document.getElementById("extractedJSON");
+            if (jsonDisplay) {
+              jsonDisplay.textContent = jsonString;
+            } else {
+              console.error("extractedJSON element not found!");
+            }
+
+            console.log("JSON String:", jsonString);
+
+            // Display extracted fields in formatted view
+            const fieldsDiv = document.getElementById("extractedFields");
+            fieldsDiv.innerHTML = "";
+
+            if (Object.keys(data.extracted_fields).length > 0) {
+              for (const [field, value] of Object.entries(
+                data.extracted_fields
+              )) {
+                const fieldItem = document.createElement("div");
+                fieldItem.className = "field-item";
+                fieldItem.innerHTML = `
                                 <span class="field-label">${field}:</span>
                                 <span class="field-value">${value}</span>
                             `;
-                            fieldsDiv.appendChild(fieldItem);
-                        }
-                    } else {
-                        fieldsDiv.innerHTML = '<p style="color: #666;">No structured fields detected. Check general text below.</p>';
-                        jsonDisplay.textContent = '{}';
-                    }
-
-                    // Display general text
-                    if (data.general_text && data.general_text.length > 0) {
-                        document.getElementById('generalTextCard').style.display = 'block';
-                        document.getElementById('generalText').innerHTML = 
-                            '<p style="color: #666; line-height: 1.8;">' + 
-                            data.general_text.join('<br>') + 
-                            '</p>';
-                    } else {
-                        document.getElementById('generalTextCard').style.display = 'none';
-                    }
-
-                    // Populate extracted data textarea in other tabs
-                    document.getElementById('extractedData').value = jsonString;
-                    document.getElementById('autofillExtractedData').value = jsonString;
-                    
-                    // Store for job form filler
-                    extractedDataGlobal = data.extracted_fields || {};
-
-                    document.getElementById('results').classList.add('show');
-                    // Scroll to results
-                    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    
-                    let successMsg = 'Text extracted successfully! JSON format ready to use.';
-                    if (data.file_type === 'pdf') {
-                        successMsg += ` 📄 Processed ${data.total_pages || 1} PDF page(s).`;
-                    }
-                    if (data.google_vision_converted) {
-                        successMsg += ' ✨ Enhanced with Google Vision API.';
-                    } else if (data.google_vision_error) {
-                        successMsg += ' (Google Vision unavailable, using YOLO extraction)';
-                    }
-                    showAlert('alert', successMsg, 'success');
-                } else {
-                    showAlert('alert', 'Failed to process file', 'error');
-                }
-            } catch (error) {
-                let errorMsg = 'Error: ' + error.message;
-                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                    errorMsg = 'Cannot connect to server. Make sure the server is running at http://localhost:8000';
-                }
-                showAlert('alert', errorMsg, 'error');
-            } finally {
-                document.getElementById('loading').classList.remove('show');
+                fieldsDiv.appendChild(fieldItem);
+              }
+            } else {
+              fieldsDiv.innerHTML =
+                '<p style="color: #666;">No structured fields detected. Check general text below.</p>';
+              jsonDisplay.textContent = "{}";
             }
+
+            // Display general text
+            if (data.general_text && data.general_text.length > 0) {
+              document.getElementById("generalTextCard").style.display =
+                "block";
+              document.getElementById("generalText").innerHTML =
+                '<p style="color: #666; line-height: 1.8;">' +
+                data.general_text.join("<br>") +
+                "</p>";
+            } else {
+              document.getElementById("generalTextCard").style.display = "none";
+            }
+
+            // Populate extracted data textarea in other tabs
+            document.getElementById("extractedData").value = jsonString;
+            document.getElementById("autofillExtractedData").value = jsonString;
+
+            // Store for job form filler
+            extractedDataGlobal = data.extracted_fields || {};
+
+            document.getElementById("results").classList.add("show");
+            // Scroll to results
+            document
+              .getElementById("results")
+              .scrollIntoView({ behavior: "smooth", block: "start" });
+
+            let successMsg =
+              "Text extracted successfully! JSON format ready to use.";
+            if (data.file_type === "pdf") {
+              successMsg += ` 📄 Processed ${
+                data.total_pages || 1
+              } PDF page(s).`;
+            }
+            if (data.google_vision_converted) {
+              successMsg += " ✨ Enhanced with Google Vision API.";
+            } else if (data.google_vision_error) {
+              successMsg +=
+                " (Google Vision unavailable, using YOLO extraction)";
+            }
+            showAlert("alert", successMsg, "success");
+          } else {
+            showAlert("alert", "Failed to process file", "error");
+          }
+        } catch (error) {
+          let errorMsg = "Error: " + error.message;
+          if (
+            error.message.includes("Failed to fetch") ||
+            error.message.includes("NetworkError")
+          ) {
+            errorMsg =
+              "Cannot connect to server. Make sure the server is running at http://localhost:8000";
+          }
+          showAlert("alert", errorMsg, "error");
+        } finally {
+          document.getElementById("loading").classList.remove("show");
+        }
+      }
+
+      async function verifyData() {
+        const extracted = document.getElementById("extractedData").value.trim();
+        const original = document.getElementById("originalData").value.trim();
+        const ocrText = document.getElementById("ocrTextBlock").value.trim();
+
+        if (!extracted) {
+          showAlert(
+            "verifyAlert",
+            "Please provide extracted structured data",
+            "error"
+          );
+          return;
         }
 
-        async function verifyData() {
-            const extracted = document.getElementById('extractedData').value.trim();
-            const original = document.getElementById('originalData').value.trim();
-            const ocrText = document.getElementById('ocrTextBlock').value.trim();
+        // Validate JSON format before sending
+        try {
+          const testParse = JSON.parse(extracted);
+          if (typeof testParse !== "object" || Array.isArray(testParse)) {
+            showAlert(
+              "verifyAlert",
+              'Extracted data must be a JSON object (not array). Format: {"field": "value"}',
+              "error"
+            );
+            return;
+          }
+          if (Object.keys(testParse).length === 0) {
+            showAlert(
+              "verifyAlert",
+              "Extracted data cannot be empty. Please provide at least one field.",
+              "error"
+            );
+            return;
+          }
+        } catch (e) {
+          showAlert(
+            "verifyAlert",
+            `Invalid JSON format: ${e.message}. Please fix the JSON syntax.`,
+            "error"
+          );
+          return;
+        }
 
-            if (!extracted) {
-                showAlert('verifyAlert', 'Please provide extracted structured data', 'error');
-                return;
+        document.getElementById("verifyLoading").classList.add("show");
+        document.getElementById("verifyResults").classList.remove("show");
+        hideAlert("verifyAlert");
+
+        try {
+          const formData = new FormData();
+          formData.append("extracted_data", extracted);
+          if (original) formData.append("original_data", original);
+          if (ocrText) formData.append("ocr_text_block", ocrText);
+
+          const response = await fetch("/api/verify", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorData = await response
+              .json()
+              .catch(() => ({ detail: response.statusText }));
+            throw new Error(
+              errorData.detail || `Server error: ${response.status}`
+            );
+          }
+
+          const data = await response.json();
+
+          if (data.success) {
+            // Display overall status
+            const statusCard = document.getElementById("overallStatusCard");
+            const statusTitle = document.getElementById("overallStatusTitle");
+            const statusContent = document.getElementById(
+              "overallStatusContent"
+            );
+
+            const status = data.overall_verification_status;
+            let statusColor = "#28a745";
+            let statusIcon = "✅";
+            let statusText = "PASS";
+
+            if (status === "PASS WITH CORRECTIONS") {
+              statusColor = "#ffc107";
+              statusIcon = "⚠️";
+              statusText = "PASS WITH CORRECTIONS";
+            } else if (status === "FAIL") {
+              statusColor = "#dc3545";
+              statusIcon = "❌";
+              statusText = "FAIL";
             }
 
-            // Validate JSON format before sending
-            try {
-                const testParse = JSON.parse(extracted);
-                if (typeof testParse !== 'object' || Array.isArray(testParse)) {
-                    showAlert('verifyAlert', 'Extracted data must be a JSON object (not array). Format: {"field": "value"}', 'error');
-                    return;
-                }
-                if (Object.keys(testParse).length === 0) {
-                    showAlert('verifyAlert', 'Extracted data cannot be empty. Please provide at least one field.', 'error');
-                    return;
-                }
-            } catch (e) {
-                showAlert('verifyAlert', `Invalid JSON format: ${e.message}. Please fix the JSON syntax.`, 'error');
-                return;
+            statusCard.style.borderLeftColor = statusColor;
+            statusTitle.innerHTML = `${statusIcon} Overall Verification: <span style="color: ${statusColor};">${statusText}</span>`;
+
+            // Display cleaned data
+            if (data.cleaned_data) {
+              document.getElementById("cleanedDataCard").style.display =
+                "block";
+              document.getElementById("cleanedDataDisplay").textContent =
+                JSON.stringify(data.cleaned_data, null, 2);
             }
 
-            document.getElementById('verifyLoading').classList.add('show');
-            document.getElementById('verifyResults').classList.remove('show');
-            hideAlert('verifyAlert');
+            // Display verification report
+            const detailsDiv = document.getElementById("verificationDetails");
+            detailsDiv.innerHTML = "";
 
-            try {
-                const formData = new FormData();
-                formData.append('extracted_data', extracted);
-                if (original) formData.append('original_data', original);
-                if (ocrText) formData.append('ocr_text_block', ocrText);
+            if (
+              data.verification_report &&
+              data.verification_report.length > 0
+            ) {
+              data.verification_report.forEach((report, index) => {
+                const resultDiv = document.createElement("div");
 
-                const response = await fetch('/api/verify', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-                    throw new Error(errorData.detail || `Server error: ${response.status}`);
+                let statusClass = "match";
+                let statusColor = "#28a745";
+                if (report.status === "mismatch") {
+                  statusClass = "mismatch";
+                  statusColor = "#dc3545";
+                } else if (report.status === "corrected") {
+                  statusClass = "match";
+                  statusColor = "#ffc107";
                 }
 
-                const data = await response.json();
+                resultDiv.className = `verification-result ${statusClass}`;
+                resultDiv.style.borderLeftColor = statusColor;
 
-                if (data.success) {
-                    // Display overall status
-                    const statusCard = document.getElementById('overallStatusCard');
-                    const statusTitle = document.getElementById('overallStatusTitle');
-                    const statusContent = document.getElementById('overallStatusContent');
-                    
-                    const status = data.overall_verification_status;
-                    let statusColor = '#28a745';
-                    let statusIcon = '✅';
-                    let statusText = 'PASS';
-                    
-                    if (status === 'PASS WITH CORRECTIONS') {
-                        statusColor = '#ffc107';
-                        statusIcon = '⚠️';
-                        statusText = 'PASS WITH CORRECTIONS';
-                    } else if (status === 'FAIL') {
-                        statusColor = '#dc3545';
-                        statusIcon = '❌';
-                        statusText = 'FAIL';
-                    }
-                    
-                    statusCard.style.borderLeftColor = statusColor;
-                    statusTitle.innerHTML = `${statusIcon} Overall Verification: <span style="color: ${statusColor};">${statusText}</span>`;
-                    
-                    // Display cleaned data
-                    if (data.cleaned_data) {
-                        document.getElementById('cleanedDataCard').style.display = 'block';
-                        document.getElementById('cleanedDataDisplay').textContent = JSON.stringify(data.cleaned_data, null, 2);
-                    }
-                    
-                    // Display verification report
-                    const detailsDiv = document.getElementById('verificationDetails');
-                    detailsDiv.innerHTML = '';
-                    
-                    if (data.verification_report && data.verification_report.length > 0) {
-                        data.verification_report.forEach((report, index) => {
-                            const resultDiv = document.createElement('div');
-                            
-                            let statusClass = 'match';
-                            let statusColor = '#28a745';
-                            if (report.status === 'mismatch') {
-                                statusClass = 'mismatch';
-                                statusColor = '#dc3545';
-                            } else if (report.status === 'corrected') {
-                                statusClass = 'match';
-                                statusColor = '#ffc107';
-                            }
-                            
-                            resultDiv.className = `verification-result ${statusClass}`;
-                            resultDiv.style.borderLeftColor = statusColor;
-                            
-                            let confidenceBadge = '';
-                            if (report.confidence) {
-                                let confClass = 'confidence-low';
-                                const confStr = String(report.confidence).toLowerCase();
-                                if (confStr === 'high') confClass = 'confidence-high';
-                                else if (confStr === 'medium') confClass = 'confidence-medium';
-                                confidenceBadge = `<span class="confidence-badge ${confClass}">${confStr.toUpperCase()}</span>`;
-                            }
-                            
-                            let issuesHtml = '';
-                            if (report.issues && report.issues.length > 0) {
-                                issuesHtml = `<div style="margin-top: 8px; padding: 8px; background: #fff3cd; border-radius: 4px; font-size: 0.9em;">
+                let confidenceBadge = "";
+                if (report.confidence) {
+                  let confClass = "confidence-low";
+                  const confStr = String(report.confidence).toLowerCase();
+                  if (confStr === "high") confClass = "confidence-high";
+                  else if (confStr === "medium")
+                    confClass = "confidence-medium";
+                  confidenceBadge = `<span class="confidence-badge ${confClass}">${confStr.toUpperCase()}</span>`;
+                }
+
+                let issuesHtml = "";
+                if (report.issues && report.issues.length > 0) {
+                  issuesHtml = `<div style="margin-top: 8px; padding: 8px; background: #fff3cd; border-radius: 4px; font-size: 0.9em;">
                                     <strong>Issues:</strong><ul style="margin: 5px 0; padding-left: 20px;">
-                                    ${report.issues.map(issue => `<li>${issue}</li>`).join('')}
+                                    ${report.issues
+                                      .map((issue) => `<li>${issue}</li>`)
+                                      .join("")}
                                     </ul></div>`;
-                            }
-                            
-                            let similarityHtml = '';
-                            if (report.similarity_score !== null) {
-                                similarityHtml = `<small style="color: #666;">Similarity: ${report.similarity_score}%</small><br>`;
-                            }
-                            
-                            resultDiv.innerHTML = `
+                }
+
+                let similarityHtml = "";
+                if (report.similarity_score !== null) {
+                  similarityHtml = `<small style="color: #666;">Similarity: ${report.similarity_score}%</small><br>`;
+                }
+
+                resultDiv.innerHTML = `
                                 <div style="flex: 1;">
-                                    <strong style="font-size: 1.1em;">${report.field}</strong>
-                                    <small style="color: #666; margin-left: 10px;">(${report.field_type})</small>
+                                    <strong style="font-size: 1.1em;">${
+                                      report.field
+                                    }</strong>
+                                    <small style="color: #666; margin-left: 10px;">(${
+                                      report.field_type
+                                    })</small>
                                     <div style="margin-top: 10px;">
-                                        <div><strong>OCR Value:</strong> <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">${report.ocr_value || 'N/A'}</code></div>
-                                        ${report.ocr_value !== report.corrected_value ? 
-                                            `<div><strong>Corrected:</strong> <code style="background: #d4edda; padding: 2px 6px; border-radius: 3px;">${report.corrected_value}</code></div>` : ''
+                                        <div><strong>OCR Value:</strong> <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">${
+                                          report.ocr_value || "N/A"
+                                        }</code></div>
+                                        ${
+                                          report.ocr_value !==
+                                          report.corrected_value
+                                            ? `<div><strong>Corrected:</strong> <code style="background: #d4edda; padding: 2px 6px; border-radius: 3px;">${report.corrected_value}</code></div>`
+                                            : ""
                                         }
-                                        ${report.original_value ? 
-                                            `<div><strong>Original:</strong> <code style="background: #e7f3ff; padding: 2px 6px; border-radius: 3px;">${report.original_value}</code></div>` : ''
+                                        ${
+                                          report.original_value
+                                            ? `<div><strong>Original:</strong> <code style="background: #e7f3ff; padding: 2px 6px; border-radius: 3px;">${report.original_value}</code></div>`
+                                            : ""
                                         }
                                         <div style="margin-top: 5px;">
                                             <strong>Status:</strong> <span style="color: ${statusColor}; font-weight: bold;">${report.status.toUpperCase()}</span>
-                                            ${report.format_valid ? '<span style="color: #28a745; margin-left: 10px;">✓ Format Valid</span>' : '<span style="color: #dc3545; margin-left: 10px;">✗ Format Invalid</span>'}
+                                            ${
+                                              report.format_valid
+                                                ? '<span style="color: #28a745; margin-left: 10px;">✓ Format Valid</span>'
+                                                : '<span style="color: #dc3545; margin-left: 10px;">✗ Format Invalid</span>'
+                                            }
                                         </div>
                                         ${similarityHtml}
                                         ${issuesHtml}
@@ -964,200 +1383,263 @@
                                     ${confidenceBadge}
                                 </div>
                             `;
-                            detailsDiv.appendChild(resultDiv);
-                        });
-                    }
-                    
-                    // Display summary
-                    if (data.summary) {
-                        const summaryDiv = document.getElementById('summaryStats');
-                        summaryDiv.innerHTML = `
+                detailsDiv.appendChild(resultDiv);
+              });
+            }
+
+            // Display summary
+            if (data.summary) {
+              const summaryDiv = document.getElementById("summaryStats");
+              summaryDiv.innerHTML = `
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 15px;">
                                 <div style="text-align: center; padding: 15px; background: #f8f9ff; border-radius: 8px;">
-                                    <div style="font-size: 2em; font-weight: bold; color: #667eea;">${data.summary.total_fields}</div>
+                                    <div style="font-size: 2em; font-weight: bold; color: #667eea;">${
+                                      data.summary.total_fields
+                                    }</div>
                                     <div style="color: #666;">Total Fields</div>
                                 </div>
                                 <div style="text-align: center; padding: 15px; background: #d4edda; border-radius: 8px;">
-                                    <div style="font-size: 2em; font-weight: bold; color: #28a745;">${data.summary.correct}</div>
+                                    <div style="font-size: 2em; font-weight: bold; color: #28a745;">${
+                                      data.summary.correct
+                                    }</div>
                                     <div style="color: #666;">Correct</div>
                                 </div>
                                 <div style="text-align: center; padding: 15px; background: #fff3cd; border-radius: 8px;">
-                                    <div style="font-size: 2em; font-weight: bold; color: #ffc107;">${data.summary.corrected}</div>
+                                    <div style="font-size: 2em; font-weight: bold; color: #ffc107;">${
+                                      data.summary.corrected
+                                    }</div>
                                     <div style="color: #666;">Corrected</div>
                                 </div>
                                 <div style="text-align: center; padding: 15px; background: #f8d7da; border-radius: 8px;">
-                                    <div style="font-size: 2em; font-weight: bold; color: #dc3545;">${data.summary.mismatch}</div>
+                                    <div style="font-size: 2em; font-weight: bold; color: #dc3545;">${
+                                      data.summary.mismatch
+                                    }</div>
                                     <div style="color: #666;">Mismatch</div>
                                 </div>
                             </div>
-                            ${data.summary.issues_found > 0 ? 
-                                `<div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 8px;">
+                            ${
+                              data.summary.issues_found > 0
+                                ? `<div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 8px;">
                                     <strong>⚠️ Total Issues Found:</strong> ${data.summary.issues_found}
-                                </div>` : ''
+                                </div>`
+                                : ""
                             }
                         `;
-                    }
-                    
-                    document.getElementById('verifyResults').classList.add('show');
-                    showAlert('verifyAlert', `Verification complete! Status: ${status}`, 'success');
-                } else {
-                    showAlert('verifyAlert', 'Verification failed', 'error');
-                }
-            } catch (error) {
-                let errorMsg = 'Error: ' + error.message;
-                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                    errorMsg = 'Cannot connect to server. Make sure the server is running at http://localhost:8000';
-                } else if (error.message.includes('Invalid JSON')) {
-                    errorMsg = `Invalid JSON format: ${error.message}. Please check your extracted data is valid JSON.`;
-                }
-                showAlert('verifyAlert', errorMsg, 'error');
-                console.error('Verify error:', error);
-            } finally {
-                document.getElementById('verifyLoading').classList.remove('show');
             }
+
+            document.getElementById("verifyResults").classList.add("show");
+            showAlert(
+              "verifyAlert",
+              `Verification complete! Status: ${status}`,
+              "success"
+            );
+          } else {
+            showAlert("verifyAlert", "Verification failed", "error");
+          }
+        } catch (error) {
+          let errorMsg = "Error: " + error.message;
+          if (
+            error.message.includes("Failed to fetch") ||
+            error.message.includes("NetworkError")
+          ) {
+            errorMsg =
+              "Cannot connect to server. Make sure the server is running at http://localhost:8000";
+          } else if (error.message.includes("Invalid JSON")) {
+            errorMsg = `Invalid JSON format: ${error.message}. Please check your extracted data is valid JSON.`;
+          }
+          showAlert("verifyAlert", errorMsg, "error");
+          console.error("Verify error:", error);
+        } finally {
+          document.getElementById("verifyLoading").classList.remove("show");
+        }
+      }
+
+      function copyExtractedJSON() {
+        const jsonDisplay = document.getElementById("extractedJSON");
+        const jsonText = jsonDisplay.textContent;
+
+        if (!jsonText || jsonText.trim() === "" || jsonText === "{}") {
+          showAlert(
+            "alert",
+            "No JSON data to copy. Please extract text from an image first.",
+            "error"
+          );
+          return;
         }
 
-        function copyExtractedJSON() {
-            const jsonDisplay = document.getElementById('extractedJSON');
-            const jsonText = jsonDisplay.textContent;
-            
-            if (!jsonText || jsonText.trim() === '' || jsonText === '{}') {
-                showAlert('alert', 'No JSON data to copy. Please extract text from an image first.', 'error');
-                return;
-            }
-            
-            navigator.clipboard.writeText(jsonText).then(() => {
-                showAlert('alert', '✓ JSON copied to clipboard!', 'success');
-            }).catch(err => {
-                // Fallback for older browsers
-                const textarea = document.createElement('textarea');
-                textarea.value = jsonText;
-                document.body.appendChild(textarea);
-                textarea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textarea);
-                showAlert('alert', '✓ JSON copied to clipboard!', 'success');
-            });
+        navigator.clipboard
+          .writeText(jsonText)
+          .then(() => {
+            showAlert("alert", "✓ JSON copied to clipboard!", "success");
+          })
+          .catch((err) => {
+            // Fallback for older browsers
+            const textarea = document.createElement("textarea");
+            textarea.value = jsonText;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand("copy");
+            document.body.removeChild(textarea);
+            showAlert("alert", "✓ JSON copied to clipboard!", "success");
+          });
+      }
+
+      function validateJSONForVerify(textareaId) {
+        const textarea = document.getElementById(textareaId);
+        const value = textarea.value.trim();
+
+        if (!value) {
+          showAlert("verifyAlert", "Textarea is empty", "error");
+          return false;
         }
-        
-        function validateJSONForVerify(textareaId) {
-            const textarea = document.getElementById(textareaId);
-            const value = textarea.value.trim();
-            
-            if (!value) {
-                showAlert('verifyAlert', 'Textarea is empty', 'error');
-                return false;
-            }
-            
-            try {
-                const parsed = JSON.parse(value);
-                if (typeof parsed !== 'object' || Array.isArray(parsed)) {
-                    showAlert('verifyAlert', 'Must be a JSON object (not array). Format: {"field": "value"}', 'error');
-                    return false;
-                }
-                if (Object.keys(parsed).length === 0) {
-                    showAlert('verifyAlert', 'JSON object cannot be empty. Please provide at least one field.', 'error');
-                    return false;
-                }
-                showAlert('verifyAlert', '✓ Valid JSON format!', 'success');
-                return true;
-            } catch (e) {
-                showAlert('verifyAlert', `Invalid JSON: ${e.message}`, 'error');
-                return false;
-            }
+
+        try {
+          const parsed = JSON.parse(value);
+          if (typeof parsed !== "object" || Array.isArray(parsed)) {
+            showAlert(
+              "verifyAlert",
+              'Must be a JSON object (not array). Format: {"field": "value"}',
+              "error"
+            );
+            return false;
+          }
+          if (Object.keys(parsed).length === 0) {
+            showAlert(
+              "verifyAlert",
+              "JSON object cannot be empty. Please provide at least one field.",
+              "error"
+            );
+            return false;
+          }
+          showAlert("verifyAlert", "✓ Valid JSON format!", "success");
+          return true;
+        } catch (e) {
+          showAlert("verifyAlert", `Invalid JSON: ${e.message}`, "error");
+          return false;
         }
-        
-        function validateJSON(textareaId) {
-            const textarea = document.getElementById(textareaId);
-            const value = textarea.value.trim();
-            
-            if (!value) {
-                showAlert('autofillAlert', 'Textarea is empty', 'error');
-                return false;
-            }
-            
-            try {
-                const parsed = JSON.parse(value);
-                if (typeof parsed !== 'object' || Array.isArray(parsed)) {
-                    showAlert('autofillAlert', 'JSON must be an object/dictionary, not an array', 'error');
-                    return false;
-                }
-                showAlert('autofillAlert', '✅ Valid JSON format!', 'success');
-                return true;
-            } catch (e) {
-                showAlert('autofillAlert', `Invalid JSON: ${e.message}`, 'error');
-                return false;
-            }
+      }
+
+      function validateJSON(textareaId) {
+        const textarea = document.getElementById(textareaId);
+        const value = textarea.value.trim();
+
+        if (!value) {
+          showAlert("autofillAlert", "Textarea is empty", "error");
+          return false;
         }
-        
-        async function autofillForm() {
-            const formFieldsText = document.getElementById('formFields').value.trim();
-            const extracted = document.getElementById('autofillExtractedData').value.trim();
 
-            if (!formFieldsText || !extracted) {
-                showAlert('autofillAlert', 'Please provide both form fields and extracted data', 'error');
-                return;
-            }
+        try {
+          const parsed = JSON.parse(value);
+          if (typeof parsed !== "object" || Array.isArray(parsed)) {
+            showAlert(
+              "autofillAlert",
+              "JSON must be an object/dictionary, not an array",
+              "error"
+            );
+            return false;
+          }
+          showAlert("autofillAlert", "✅ Valid JSON format!", "success");
+          return true;
+        } catch (e) {
+          showAlert("autofillAlert", `Invalid JSON: ${e.message}`, "error");
+          return false;
+        }
+      }
 
-            // Validate JSON before sending
-            try {
-                const testParse = JSON.parse(extracted);
-                if (typeof testParse !== 'object' || Array.isArray(testParse)) {
-                    showAlert('autofillAlert', 'Extracted data must be a JSON object (not array). Format: {"field": "value"}', 'error');
-                    return;
-                }
-            } catch (e) {
-                showAlert('autofillAlert', `Invalid JSON format: ${e.message}. Please fix the JSON syntax.`, 'error');
-                return;
-            }
+      async function autofillForm() {
+        const formFieldsText = document
+          .getElementById("formFields")
+          .value.trim();
+        const extracted = document
+          .getElementById("autofillExtractedData")
+          .value.trim();
 
-            // Parse form fields (support both JSON array and line-separated)
-            let formFieldsArray;
-            try {
-                formFieldsArray = JSON.parse(formFieldsText);
-                if (!Array.isArray(formFieldsArray)) {
-                    formFieldsArray = [formFieldsText];
-                }
-            } catch {
-                formFieldsArray = formFieldsText.split('\n').filter(f => f.trim());
-            }
+        if (!formFieldsText || !extracted) {
+          showAlert(
+            "autofillAlert",
+            "Please provide both form fields and extracted data",
+            "error"
+          );
+          return;
+        }
 
-            if (formFieldsArray.length === 0) {
-                showAlert('autofillAlert', 'Please provide at least one form field', 'error');
-                return;
-            }
+        // Validate JSON before sending
+        try {
+          const testParse = JSON.parse(extracted);
+          if (typeof testParse !== "object" || Array.isArray(testParse)) {
+            showAlert(
+              "autofillAlert",
+              'Extracted data must be a JSON object (not array). Format: {"field": "value"}',
+              "error"
+            );
+            return;
+          }
+        } catch (e) {
+          showAlert(
+            "autofillAlert",
+            `Invalid JSON format: ${e.message}. Please fix the JSON syntax.`,
+            "error"
+          );
+          return;
+        }
 
-            document.getElementById('autofillLoading').classList.add('show');
-            document.getElementById('autofillResults').classList.remove('show');
-            hideAlert('autofillAlert');
+        // Parse form fields (support both JSON array and line-separated)
+        let formFieldsArray;
+        try {
+          formFieldsArray = JSON.parse(formFieldsText);
+          if (!Array.isArray(formFieldsArray)) {
+            formFieldsArray = [formFieldsText];
+          }
+        } catch {
+          formFieldsArray = formFieldsText.split("\n").filter((f) => f.trim());
+        }
 
-            try {
-                const formData = new FormData();
-                formData.append('form_fields', JSON.stringify(formFieldsArray));
-                formData.append('extracted_data', extracted);
+        if (formFieldsArray.length === 0) {
+          showAlert(
+            "autofillAlert",
+            "Please provide at least one form field",
+            "error"
+          );
+          return;
+        }
 
-                const response = await fetch('/api/autofill', {
-                    method: 'POST',
-                    body: formData
-                });
+        document.getElementById("autofillLoading").classList.add("show");
+        document.getElementById("autofillResults").classList.remove("show");
+        hideAlert("autofillAlert");
 
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-                    throw new Error(errorData.detail || `Server error: ${response.status}`);
-                }
+        try {
+          const formData = new FormData();
+          formData.append("form_fields", JSON.stringify(formFieldsArray));
+          formData.append("extracted_data", extracted);
 
-                const data = await response.json();
+          const response = await fetch("/api/autofill", {
+            method: "POST",
+            body: formData,
+          });
 
-                if (data.success) {
-                    const matchDiv = document.getElementById('matchDetails');
-                    matchDiv.innerHTML = '';
+          if (!response.ok) {
+            const errorData = await response
+              .json()
+              .catch(() => ({ detail: response.statusText }));
+            throw new Error(
+              errorData.detail || `Server error: ${response.status}`
+            );
+          }
 
-                    for (const [formField, match] of Object.entries(data.matches)) {
-                        const matchItem = document.createElement('div');
-                        matchItem.className = `match-item ${match.matched_field ? '' : 'no-match'}`;
-                        
-                        if (match.matched_field) {
-                            matchItem.innerHTML = `
+          const data = await response.json();
+
+          if (data.success) {
+            const matchDiv = document.getElementById("matchDetails");
+            matchDiv.innerHTML = "";
+
+            for (const [formField, match] of Object.entries(data.matches)) {
+              const matchItem = document.createElement("div");
+              matchItem.className = `match-item ${
+                match.matched_field ? "" : "no-match"
+              }`;
+
+              if (match.matched_field) {
+                matchItem.innerHTML = `
                                 <div>
                                     <strong>${formField}</strong> → 
                                     <span style="color: #667eea;">${match.matched_field}</span>
@@ -1169,215 +1651,275 @@
                                     </span>
                                 </div>
                             `;
-                        } else {
-                            matchItem.innerHTML = `
+              } else {
+                matchItem.innerHTML = `
                                 <div>
                                     <strong>${formField}</strong> → 
                                     <span style="color: #dc3545;">No match found</span>
                                 </div>
                             `;
-                        }
-                        matchDiv.appendChild(matchItem);
-                    }
-
-                    document.getElementById('autofillResults').classList.add('show');
-                    showAlert('autofillAlert', `Matched ${data.fields_matched} out of ${Object.keys(data.matches).length} fields!`, 'success');
-                } else {
-                    showAlert('autofillAlert', 'Auto-fill matching failed', 'error');
-                }
-            } catch (error) {
-                let errorMsg = 'Error: ' + error.message;
-                if (error.message.includes('Failed to fetch')) {
-                    errorMsg = 'Cannot connect to server. Make sure the server is running.';
-                } else if (error.message.includes('Invalid JSON')) {
-                    errorMsg = 'Invalid JSON format. Please check your extracted data is valid JSON.';
-                }
-                showAlert('autofillAlert', errorMsg, 'error');
-                console.error('Autofill error:', error);
-            } finally {
-                document.getElementById('autofillLoading').classList.remove('show');
+              }
+              matchDiv.appendChild(matchItem);
             }
+
+            document.getElementById("autofillResults").classList.add("show");
+            showAlert(
+              "autofillAlert",
+              `Matched ${data.fields_matched} out of ${
+                Object.keys(data.matches).length
+              } fields!`,
+              "success"
+            );
+          } else {
+            showAlert("autofillAlert", "Auto-fill matching failed", "error");
+          }
+        } catch (error) {
+          let errorMsg = "Error: " + error.message;
+          if (error.message.includes("Failed to fetch")) {
+            errorMsg =
+              "Cannot connect to server. Make sure the server is running.";
+          } else if (error.message.includes("Invalid JSON")) {
+            errorMsg =
+              "Invalid JSON format. Please check your extracted data is valid JSON.";
+          }
+          showAlert("autofillAlert", errorMsg, "error");
+          console.error("Autofill error:", error);
+        } finally {
+          document.getElementById("autofillLoading").classList.remove("show");
+        }
+      }
+
+      // Job Form Filler Functions
+      async function analyzeJobForm() {
+        const formUrl = document.getElementById("jobFormUrl").value.trim();
+
+        if (!formUrl) {
+          showAlert("jobFormAlert", "Please enter a Google Form URL", "error");
+          return;
         }
 
-        // Job Form Filler Functions
-        async function analyzeJobForm() {
-            const formUrl = document.getElementById('jobFormUrl').value.trim();
-            
-            if (!formUrl) {
-                showAlert('jobFormAlert', 'Please enter a Google Form URL', 'error');
-                return;
-            }
-            
-            if (!formUrl.includes('docs.google.com/forms')) {
-                showAlert('jobFormAlert', 'Please enter a valid Google Form URL', 'error');
-                return;
-            }
-            
-            document.getElementById('jobFormLoading').classList.add('show');
-            document.getElementById('formQuestionsResult').classList.remove('show');
-            document.getElementById('jobFormResults').classList.remove('show');
-            hideAlert('jobFormAlert');
-            
-            try {
-                const formData = new FormData();
-                formData.append('form_url', formUrl);
-                
-                const response = await fetch('/api/job-form/analyze', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-                    throw new Error(errorData.detail || `Server error: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    currentJobFormUrl = formUrl;
-                    
-                    // Display form questions
-                    const questionsDiv = document.getElementById('formQuestionsDisplay');
-                    questionsDiv.innerHTML = '';
-                    
-                    let questionsHtml = `<div style="margin-bottom: 15px; padding: 10px; background: #e7f3ff; border-radius: 8px;">
+        if (!formUrl.includes("docs.google.com/forms")) {
+          showAlert(
+            "jobFormAlert",
+            "Please enter a valid Google Form URL",
+            "error"
+          );
+          return;
+        }
+
+        document.getElementById("jobFormLoading").classList.add("show");
+        document.getElementById("formQuestionsResult").classList.remove("show");
+        document.getElementById("jobFormResults").classList.remove("show");
+        hideAlert("jobFormAlert");
+
+        try {
+          const formData = new FormData();
+          formData.append("form_url", formUrl);
+
+          const response = await fetch("/api/job-form/analyze", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorData = await response
+              .json()
+              .catch(() => ({ detail: response.statusText }));
+            throw new Error(
+              errorData.detail || `Server error: ${response.status}`
+            );
+          }
+
+          const data = await response.json();
+
+          if (data.success) {
+            currentJobFormUrl = formUrl;
+
+            // Display form questions
+            const questionsDiv = document.getElementById(
+              "formQuestionsDisplay"
+            );
+            questionsDiv.innerHTML = "";
+
+            let questionsHtml = `<div style="margin-bottom: 15px; padding: 10px; background: #e7f3ff; border-radius: 8px;">
                         <strong>Total Questions:</strong> ${data.total_questions}
                     </div>`;
-                    
-                    data.questions.forEach((q, index) => {
-                        const requiredBadge = q.Required ? '<span style="color: #dc3545; margin-left: 10px;">*Required</span>' : '';
-                        questionsHtml += `
+
+            data.questions.forEach((q, index) => {
+              const requiredBadge = q.Required
+                ? '<span style="color: #dc3545; margin-left: 10px;">*Required</span>'
+                : "";
+              questionsHtml += `
                             <div style="padding: 15px; margin: 10px 0; background: white; border-radius: 8px; border-left: 4px solid #667eea;">
                                 <div style="font-weight: bold; margin-bottom: 5px;">
                                     ${index + 1}. ${q.Question} ${requiredBadge}
                                 </div>
                                 <div style="color: #666; font-size: 0.9em;">
                                     <strong>Type:</strong> ${q.Field_Type}
-                                    ${q.Selection_Type ? `<br><strong>Selection:</strong> ${q.Selection_Type}` : ''}
-                                    ${q.Options ? `<br><strong>Options:</strong> ${q.Options}` : ''}
+                                    ${
+                                      q.Selection_Type
+                                        ? `<br><strong>Selection:</strong> ${q.Selection_Type}`
+                                        : ""
+                                    }
+                                    ${
+                                      q.Options
+                                        ? `<br><strong>Options:</strong> ${q.Options}`
+                                        : ""
+                                    }
                                 </div>
                             </div>
                         `;
-                    });
-                    
-                    questionsDiv.innerHTML = questionsHtml;
-                    document.getElementById('formQuestionsResult').classList.add('show');
-                    document.getElementById('fillJobFormBtn').style.display = 'inline-block';
-                    if (resumeIndexPath) {
-                        document.getElementById('fillJobFormAIBtn').style.display = 'inline-block';
-                    }
-                    
-                    showAlert('jobFormAlert', `✅ Form analyzed successfully! Found ${data.total_questions} questions.`, 'success');
-                } else {
-                    showAlert('jobFormAlert', 'Failed to analyze form', 'error');
-                }
-            } catch (error) {
-                let errorMsg = 'Error: ' + error.message;
-                if (error.message.includes('Failed to fetch')) {
-                    errorMsg = 'Cannot connect to server. Make sure the server is running.';
-                }
-                showAlert('jobFormAlert', errorMsg, 'error');
-            } finally {
-                document.getElementById('jobFormLoading').classList.remove('show');
+            });
+
+            questionsDiv.innerHTML = questionsHtml;
+            document
+              .getElementById("formQuestionsResult")
+              .classList.add("show");
+            document.getElementById("fillJobFormBtn").style.display =
+              "inline-block";
+            if (resumeIndexPath) {
+              document.getElementById("fillJobFormAIBtn").style.display =
+                "inline-block";
             }
+
+            showAlert(
+              "jobFormAlert",
+              `✅ Form analyzed successfully! Found ${data.total_questions} questions.`,
+              "success"
+            );
+          } else {
+            showAlert("jobFormAlert", "Failed to analyze form", "error");
+          }
+        } catch (error) {
+          let errorMsg = "Error: " + error.message;
+          if (error.message.includes("Failed to fetch")) {
+            errorMsg =
+              "Cannot connect to server. Make sure the server is running.";
+          }
+          showAlert("jobFormAlert", errorMsg, "error");
+        } finally {
+          document.getElementById("jobFormLoading").classList.remove("show");
         }
-        
-        async function fillJobForm() {
-            if (!currentJobFormUrl) {
-                showAlert('jobFormAlert', 'Please analyze the form first', 'error');
-                return;
-            }
-            
-            // Get extracted data
-            let extractedData = extractedDataGlobal;
-            
-            // If no global data, try to get from extract tab
-            if (Object.keys(extractedData).length === 0) {
-                const extractedText = document.getElementById('extractedData').value;
-                if (extractedText) {
-                    try {
-                        extractedData = JSON.parse(extractedText);
-                    } catch {
-                        showAlert('jobFormAlert', 'Please extract data from a document first, or provide JSON data', 'error');
-                        return;
-                    }
-                } else {
-                    showAlert('jobFormAlert', 'No extracted data found. Please extract data from a document first.', 'error');
-                    return;
-                }
-            }
-            
-            document.getElementById('jobFormLoading').classList.add('show');
-            document.getElementById('jobFormResults').classList.remove('show');
-            hideAlert('jobFormAlert');
-            
+      }
+
+      async function fillJobForm() {
+        if (!currentJobFormUrl) {
+          showAlert("jobFormAlert", "Please analyze the form first", "error");
+          return;
+        }
+
+        // Get extracted data
+        let extractedData = extractedDataGlobal;
+
+        // If no global data, try to get from extract tab
+        if (Object.keys(extractedData).length === 0) {
+          const extractedText = document.getElementById("extractedData").value;
+          if (extractedText) {
             try {
-                const formData = new FormData();
-                formData.append('form_url', currentJobFormUrl);
-                formData.append('extracted_data', JSON.stringify(extractedData));
-                
-                const response = await fetch('/api/job-form/fill', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-                    throw new Error(errorData.detail || `Server error: ${response.status}`);
+              extractedData = JSON.parse(extractedText);
+            } catch {
+              showAlert(
+                "jobFormAlert",
+                "Please extract data from a document first, or provide JSON data",
+                "error"
+              );
+              return;
+            }
+          } else {
+            showAlert(
+              "jobFormAlert",
+              "No extracted data found. Please extract data from a document first.",
+              "error"
+            );
+            return;
+          }
+        }
+
+        document.getElementById("jobFormLoading").classList.add("show");
+        document.getElementById("jobFormResults").classList.remove("show");
+        hideAlert("jobFormAlert");
+
+        try {
+          const formData = new FormData();
+          formData.append("form_url", currentJobFormUrl);
+          formData.append("extracted_data", JSON.stringify(extractedData));
+
+          const response = await fetch("/api/job-form/fill", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorData = await response
+              .json()
+              .catch(() => ({ detail: response.statusText }));
+            throw new Error(
+              errorData.detail || `Server error: ${response.status}`
+            );
+          }
+
+          const data = await response.json();
+
+          if (data.success) {
+            // Use submission_data if available, otherwise build from matches
+            if (data.submission_data) {
+              currentFilledFormData = data.submission_data;
+            } else {
+              currentFilledFormData = {};
+              for (const [entryId, match] of Object.entries(
+                data.matches || {}
+              )) {
+                if (match.answer) {
+                  currentFilledFormData[entryId] = match.answer;
                 }
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    // Use submission_data if available, otherwise build from matches
-                    if (data.submission_data) {
-                        currentFilledFormData = data.submission_data;
-                    } else {
-                        currentFilledFormData = {};
-                        for (const [entryId, match] of Object.entries(data.matches || {})) {
-                            if (match.answer) {
-                                currentFilledFormData[entryId] = match.answer;
-                            }
-                        }
-                    }
-                    
-                    // Display filled form
-                    const filledDiv = document.getElementById('filledFormDisplay');
-                    filledDiv.innerHTML = '';
-                    
-                    // Use display data if available
-                    let displayAnswers = [];
-                    if (data.display && data.display.answers) {
-                        displayAnswers = data.display.answers;
-                    } else {
-                        // Fallback to matches format
-                        for (const [entryId, match] of Object.entries(data.matches || {})) {
-                            displayAnswers.push({
-                                entry_id: entryId,
-                                question: match.question,
-                                answer: match.answer,
-                                matched_field: match.matched_field,
-                                confidence: match.confidence || 0,
-                                type: match.type || 'direct_match'
-                            });
-                        }
-                    }
-                    
-                    // Summary info
-                    let summary = {};
-                    if (data.display && data.display.summary) {
-                        summary = data.display.summary;
-                    } else {
-                        summary = {
-                            total_questions: data.total_questions || 0,
-                            matched_fields: data.matched_fields || 0,
-                            unmatched_fields: (data.total_questions || 0) - (data.matched_fields || 0),
-                            match_rate: data.total_questions > 0 ? ((data.matched_fields / data.total_questions) * 100).toFixed(1) : 0
-                        };
-                    }
-                    
-                    let filledHtml = `<div style="margin-bottom: 15px; padding: 15px; background: #d4edda; border-radius: 8px;">
+              }
+            }
+
+            // Display filled form
+            const filledDiv = document.getElementById("filledFormDisplay");
+            filledDiv.innerHTML = "";
+
+            // Use display data if available
+            let displayAnswers = [];
+            if (data.display && data.display.answers) {
+              displayAnswers = data.display.answers;
+            } else {
+              // Fallback to matches format
+              for (const [entryId, match] of Object.entries(
+                data.matches || {}
+              )) {
+                displayAnswers.push({
+                  entry_id: entryId,
+                  question: match.question,
+                  answer: match.answer,
+                  matched_field: match.matched_field,
+                  confidence: match.confidence || 0,
+                  type: match.type || "direct_match",
+                });
+              }
+            }
+
+            // Summary info
+            let summary = {};
+            if (data.display && data.display.summary) {
+              summary = data.display.summary;
+            } else {
+              summary = {
+                total_questions: data.total_questions || 0,
+                matched_fields: data.matched_fields || 0,
+                unmatched_fields:
+                  (data.total_questions || 0) - (data.matched_fields || 0),
+                match_rate:
+                  data.total_questions > 0
+                    ? (
+                        (data.matched_fields / data.total_questions) *
+                        100
+                      ).toFixed(1)
+                    : 0,
+              };
+            }
+
+            let filledHtml = `<div style="margin-bottom: 15px; padding: 15px; background: #d4edda; border-radius: 8px;">
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 10px;">
                             <div style="text-align: center;">
                                 <div style="font-size: 1.5em; font-weight: bold; color: #28a745;">${summary.matched_fields}</div>
@@ -1394,235 +1936,301 @@
                         </div>
                         <strong>✅ Matched ${summary.matched_fields} out of ${summary.total_questions} fields</strong>
                     </div>`;
-                    
-                    // Display each answer
-                    displayAnswers.forEach(answer => {
-                        const borderColor = answer.answer ? '#28a745' : '#dc3545';
-                        
-                        let confidenceBadge = '';
-                        if (answer.confidence > 0) {
-                            let confClass = 'confidence-low';
-                            if (answer.confidence >= 80) confClass = 'confidence-high';
-                            else if (answer.confidence >= 60) confClass = 'confidence-medium';
-                            confidenceBadge = `<span class="confidence-badge ${confClass}" style="margin-left: 10px; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;">${answer.confidence}%</span>`;
-                        }
-                        
-                        filledHtml += `
-                            <div style="padding: 15px; margin: 10px 0; background: white; border-radius: 8px; border-left: 4px solid ${borderColor};" data-entry-id="${answer.entry_id}">
+
+            // Display each answer
+            displayAnswers.forEach((answer) => {
+              const borderColor = answer.answer ? "#28a745" : "#dc3545";
+
+              let confidenceBadge = "";
+              if (answer.confidence > 0) {
+                let confClass = "confidence-low";
+                if (answer.confidence >= 80) confClass = "confidence-high";
+                else if (answer.confidence >= 60)
+                  confClass = "confidence-medium";
+                confidenceBadge = `<span class="confidence-badge ${confClass}" style="margin-left: 10px; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;">${answer.confidence}%</span>`;
+              }
+
+              filledHtml += `
+                            <div style="padding: 15px; margin: 10px 0; background: white; border-radius: 8px; border-left: 4px solid ${borderColor};" data-entry-id="${
+                answer.entry_id
+              }">
                                 <div style="font-weight: bold; margin-bottom: 8px; display: flex; align-items: center;">
                                     ${answer.question}
                                     ${confidenceBadge}
                                 </div>
-                                ${answer.answer ? `
+                                ${
+                                  answer.answer
+                                    ? `
                                     <div style="color: #28a745; margin-top: 5px;">
-                                        <strong>Answer:</strong> <code style="background: #d4edda; padding: 4px 8px; border-radius: 4px;">${answer.answer}</code>
+                                        <strong>Answer:</strong> <code style="background: #d4edda; padding: 4px 8px; border-radius: 4px;">${
+                                          answer.answer
+                                        }</code>
                                     </div>
-                                    ${answer.matched_field ? `<div style="color: #666; font-size: 0.9em; margin-top: 5px;">
+                                    ${
+                                      answer.matched_field
+                                        ? `<div style="color: #666; font-size: 0.9em; margin-top: 5px;">
                                         <strong>Matched from:</strong> ${answer.matched_field}
-                                    </div>` : ''}
+                                    </div>`
+                                        : ""
+                                    }
                                     <div style="color: #999; font-size: 0.85em; margin-top: 5px;">
-                                        <strong>Type:</strong> ${answer.type || 'direct_match'}
+                                        <strong>Type:</strong> ${
+                                          answer.type || "direct_match"
+                                        }
                                     </div>
-                                ` : `
+                                `
+                                    : `
                                     <div style="color: #dc3545; margin-top: 5px;">
                                         <em>No match found in extracted data</em>
                                     </div>
-                                `}
+                                `
+                                }
                             </div>
                         `;
-                    });
-                    
-                    filledDiv.innerHTML = filledHtml;
-                    document.getElementById('jobFormResults').classList.add('show');
-                    
-                    // Update form data summary
-                    updateFormDataSummary();
-                    
-                    // Scroll to results
-                    setTimeout(() => {
-                        document.getElementById('jobFormResults').scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }, 100);
-                    
-                    showAlert('jobFormAlert', `✅ Form filled successfully! ${summary.matched_fields} fields matched (${summary.match_rate}% match rate).`, 'success');
-                } else {
-                    showAlert('jobFormAlert', data.error || 'Failed to fill form', 'error');
-                }
-            } catch (error) {
-                let errorMsg = 'Error: ' + error.message;
-                if (error.message.includes('Failed to fetch')) {
-                    errorMsg = 'Cannot connect to server. Make sure the server is running.';
-                }
-                showAlert('jobFormAlert', errorMsg, 'error');
-            } finally {
-                document.getElementById('jobFormLoading').classList.remove('show');
-            }
+            });
+
+            filledDiv.innerHTML = filledHtml;
+            document.getElementById("jobFormResults").classList.add("show");
+
+            // Update form data summary
+            updateFormDataSummary();
+
+            // Scroll to results
+            setTimeout(() => {
+              document
+                .getElementById("jobFormResults")
+                .scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 100);
+
+            showAlert(
+              "jobFormAlert",
+              `✅ Form filled successfully! ${summary.matched_fields} fields matched (${summary.match_rate}% match rate).`,
+              "success"
+            );
+          } else {
+            showAlert(
+              "jobFormAlert",
+              data.error || "Failed to fill form",
+              "error"
+            );
+          }
+        } catch (error) {
+          let errorMsg = "Error: " + error.message;
+          if (error.message.includes("Failed to fetch")) {
+            errorMsg =
+              "Cannot connect to server. Make sure the server is running.";
+          }
+          showAlert("jobFormAlert", errorMsg, "error");
+        } finally {
+          document.getElementById("jobFormLoading").classList.remove("show");
         }
-        
-        async function submitJobForm() {
-            if (!currentJobFormUrl || !currentFilledFormData) {
-                showAlert('jobFormAlert', 'Please fill the form first', 'error');
-                return;
-            }
-            
-            if (Object.keys(currentFilledFormData).length === 0) {
-                showAlert('jobFormAlert', 'No data to submit. Please fill the form first.', 'error');
-                return;
-            }
-            
-            if (!confirm('Are you sure you want to submit this application? This action cannot be undone.')) {
-                return;
-            }
-            
-            document.getElementById('jobFormLoading').classList.add('show');
-            hideAlert('jobFormAlert');
-            
-            try {
-                const formData = new FormData();
-                formData.append('form_url', currentJobFormUrl);
-                formData.append('form_data', JSON.stringify(currentFilledFormData));
-                
-                const response = await fetch('/api/job-form/submit', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-                    throw new Error(errorData.detail || `Server error: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showAlert('jobFormAlert', '🎉 Application submitted successfully!', 'success');
-                    const resultsDiv = document.getElementById('jobFormResults');
-                    resultsDiv.innerHTML += `
+      }
+
+      async function submitJobForm() {
+        if (!currentJobFormUrl || !currentFilledFormData) {
+          showAlert("jobFormAlert", "Please fill the form first", "error");
+          return;
+        }
+
+        if (Object.keys(currentFilledFormData).length === 0) {
+          showAlert(
+            "jobFormAlert",
+            "No data to submit. Please fill the form first.",
+            "error"
+          );
+          return;
+        }
+
+        if (
+          !confirm(
+            "Are you sure you want to submit this application? This action cannot be undone."
+          )
+        ) {
+          return;
+        }
+
+        document.getElementById("jobFormLoading").classList.add("show");
+        hideAlert("jobFormAlert");
+
+        try {
+          const formData = new FormData();
+          formData.append("form_url", currentJobFormUrl);
+          formData.append("form_data", JSON.stringify(currentFilledFormData));
+
+          const response = await fetch("/api/job-form/submit", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorData = await response
+              .json()
+              .catch(() => ({ detail: response.statusText }));
+            throw new Error(
+              errorData.detail || `Server error: ${response.status}`
+            );
+          }
+
+          const data = await response.json();
+
+          if (data.success) {
+            showAlert(
+              "jobFormAlert",
+              "🎉 Application submitted successfully!",
+              "success"
+            );
+            const resultsDiv = document.getElementById("jobFormResults");
+            resultsDiv.innerHTML += `
                         <div style="margin-top: 20px; padding: 20px; background: #d4edda; border-radius: 8px; text-align: center;">
                             <h3 style="color: #28a745; margin-bottom: 10px;">✅ Application Submitted!</h3>
                             <p style="font-size: 1.1em;">Your job application has been successfully submitted to the form.</p>
                         </div>
                     `;
-                } else {
-                    showAlert('jobFormAlert', data.message || 'Failed to submit application', 'error');
-                }
-            } catch (error) {
-                showAlert('jobFormAlert', 'Error: ' + error.message, 'error');
-            } finally {
-                document.getElementById('jobFormLoading').classList.remove('show');
-            }
+          } else {
+            showAlert(
+              "jobFormAlert",
+              data.message || "Failed to submit application",
+              "error"
+            );
+          }
+        } catch (error) {
+          showAlert("jobFormAlert", "Error: " + error.message, "error");
+        } finally {
+          document.getElementById("jobFormLoading").classList.remove("show");
         }
-        
-        async function processResume() {
-            const fileInput = document.getElementById('resumeFile');
-            const file = fileInput.files[0];
-            
-            if (!file) {
-                showAlert('jobFormAlert', 'Please select a resume PDF file', 'error');
-                return;
-            }
-            
-            if (file.type !== 'application/pdf') {
-                showAlert('jobFormAlert', 'Please upload a PDF file', 'error');
-                return;
-            }
-            
-            document.getElementById('jobFormLoading').classList.add('show');
-            document.getElementById('resumeStatus').innerHTML = '';
-            hideAlert('jobFormAlert');
-            
-            try {
-                const formData = new FormData();
-                formData.append('file', file);
-                
-                const response = await fetch('/api/resume/process', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-                    throw new Error(errorData.detail || `Server error: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    resumeIndexPath = data.index_location;
-                    document.getElementById('resumeStatus').innerHTML = `
+      }
+
+      async function processResume() {
+        const fileInput = document.getElementById("resumeFile");
+        const file = fileInput.files[0];
+
+        if (!file) {
+          showAlert("jobFormAlert", "Please select a resume PDF file", "error");
+          return;
+        }
+
+        if (file.type !== "application/pdf") {
+          showAlert("jobFormAlert", "Please upload a PDF file", "error");
+          return;
+        }
+
+        document.getElementById("jobFormLoading").classList.add("show");
+        document.getElementById("resumeStatus").innerHTML = "";
+        hideAlert("jobFormAlert");
+
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+
+          const response = await fetch("/api/resume/process", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorData = await response
+              .json()
+              .catch(() => ({ detail: response.statusText }));
+            throw new Error(
+              errorData.detail || `Server error: ${response.status}`
+            );
+          }
+
+          const data = await response.json();
+
+          if (data.success) {
+            resumeIndexPath = data.index_location;
+            document.getElementById("resumeStatus").innerHTML = `
                         <div style="color: #28a745; padding: 10px; background: #d4edda; border-radius: 5px;">
                             ✅ Resume processed successfully! Created ${data.num_nodes} searchable sections.
                         </div>
                     `;
-                    document.getElementById('aiModelSelection').style.display = 'block';
-                    showAlert('jobFormAlert', 'Resume processed successfully! You can now use AI-powered form filling.', 'success');
-                } else {
-                    showAlert('jobFormAlert', data.error || 'Failed to process resume', 'error');
-                }
-            } catch (error) {
-                showAlert('jobFormAlert', 'Error: ' + error.message, 'error');
-            } finally {
-                document.getElementById('jobFormLoading').classList.remove('show');
-            }
+            document.getElementById("aiModelSelection").style.display = "block";
+            showAlert(
+              "jobFormAlert",
+              "Resume processed successfully! You can now use AI-powered form filling.",
+              "success"
+            );
+          } else {
+            showAlert(
+              "jobFormAlert",
+              data.error || "Failed to process resume",
+              "error"
+            );
+          }
+        } catch (error) {
+          showAlert("jobFormAlert", "Error: " + error.message, "error");
+        } finally {
+          document.getElementById("jobFormLoading").classList.remove("show");
         }
-        
-        async function fillJobFormAI() {
-            if (!currentJobFormUrl) {
-                showAlert('jobFormAlert', 'Please analyze the form first', 'error');
-                return;
+      }
+
+      async function fillJobFormAI() {
+        if (!currentJobFormUrl) {
+          showAlert("jobFormAlert", "Please analyze the form first", "error");
+          return;
+        }
+
+        if (!resumeIndexPath) {
+          showAlert(
+            "jobFormAlert",
+            "Please process a resume PDF first",
+            "error"
+          );
+          return;
+        }
+
+        const selectedModel = document.getElementById("aiModel").value;
+
+        document.getElementById("jobFormLoading").classList.add("show");
+        document.getElementById("jobFormResults").classList.remove("show");
+        hideAlert("jobFormAlert");
+
+        try {
+          const formData = new FormData();
+          formData.append("form_url", currentJobFormUrl);
+          formData.append("resume_index_path", resumeIndexPath);
+          formData.append("model", selectedModel);
+
+          const response = await fetch("/api/job-form/fill-ai", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorData = await response
+              .json()
+              .catch(() => ({ detail: response.statusText }));
+            throw new Error(
+              errorData.detail || `Server error: ${response.status}`
+            );
+          }
+
+          const data = await response.json();
+
+          if (data.success) {
+            // Parse form data
+            let formDataObj = {};
+            if (typeof data.form_data === "string") {
+              formDataObj = JSON.parse(data.form_data);
+            } else {
+              formDataObj = data.form_data;
             }
-            
-            if (!resumeIndexPath) {
-                showAlert('jobFormAlert', 'Please process a resume PDF first', 'error');
-                return;
-            }
-            
-            const selectedModel = document.getElementById('aiModel').value;
-            
-            document.getElementById('jobFormLoading').classList.add('show');
-            document.getElementById('jobFormResults').classList.remove('show');
-            hideAlert('jobFormAlert');
-            
-            try {
-                const formData = new FormData();
-                formData.append('form_url', currentJobFormUrl);
-                formData.append('resume_index_path', resumeIndexPath);
-                formData.append('model', selectedModel);
-                
-                const response = await fetch('/api/job-form/fill-ai', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-                    throw new Error(errorData.detail || `Server error: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    // Parse form data
-                    let formDataObj = {};
-                    if (typeof data.form_data === 'string') {
-                        formDataObj = JSON.parse(data.form_data);
-                    } else {
-                        formDataObj = data.form_data;
-                    }
-                    
-                    currentFilledFormData = formDataObj;
-                    
-                    // Display filled form
-                    const filledDiv = document.getElementById('filledFormDisplay');
-                    filledDiv.innerHTML = '';
-                    
-                    let filledHtml = `<div style="margin-bottom: 15px; padding: 10px; background: #d4edda; border-radius: 8px;">
+
+            currentFilledFormData = formDataObj;
+
+            // Display filled form
+            const filledDiv = document.getElementById("filledFormDisplay");
+            filledDiv.innerHTML = "";
+
+            let filledHtml = `<div style="margin-bottom: 15px; padding: 10px; background: #d4edda; border-radius: 8px;">
                         <strong>✅ Form filled using AI!</strong><br>
                         <small>Model: ${selectedModel}</small>
                     </div>`;
-                    
-                    // Display form data
-                    for (const [entryId, answer] of Object.entries(formDataObj)) {
-                        filledHtml += `
+
+            // Display form data
+            for (const [entryId, answer] of Object.entries(formDataObj)) {
+              filledHtml += `
                             <div style="padding: 15px; margin: 10px 0; background: white; border-radius: 8px; border-left: 4px solid #667eea;">
                                 <div style="font-weight: bold; margin-bottom: 8px;">
                                     ${entryId}
@@ -1632,132 +2240,172 @@
                                 </div>
                             </div>
                         `;
-                    }
-                    
-                    filledDiv.innerHTML = filledHtml;
-                    document.getElementById('jobFormResults').classList.add('show');
-                    
-                    // Update form data summary
-                    updateFormDataSummary();
-                    
-                    // Scroll to results
-                    setTimeout(() => {
-                        document.getElementById('jobFormResults').scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }, 100);
-                    
-                    showAlert('jobFormAlert', '✅ Form filled successfully using AI!', 'success');
-                } else {
-                    showAlert('jobFormAlert', data.error || 'Failed to fill form with AI', 'error');
-                }
-            } catch (error) {
-                let errorMsg = 'Error: ' + error.message;
-                if (error.message.includes('Failed to fetch')) {
-                    errorMsg = 'Cannot connect to server. Make sure the server is running.';
-                }
-                showAlert('jobFormAlert', errorMsg, 'error');
-            } finally {
-                document.getElementById('jobFormLoading').classList.remove('show');
             }
+
+            filledDiv.innerHTML = filledHtml;
+            document.getElementById("jobFormResults").classList.add("show");
+
+            // Update form data summary
+            updateFormDataSummary();
+
+            // Scroll to results
+            setTimeout(() => {
+              document
+                .getElementById("jobFormResults")
+                .scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 100);
+
+            showAlert(
+              "jobFormAlert",
+              "✅ Form filled successfully using AI!",
+              "success"
+            );
+          } else {
+            showAlert(
+              "jobFormAlert",
+              data.error || "Failed to fill form with AI",
+              "error"
+            );
+          }
+        } catch (error) {
+          let errorMsg = "Error: " + error.message;
+          if (error.message.includes("Failed to fetch")) {
+            errorMsg =
+              "Cannot connect to server. Make sure the server is running.";
+          }
+          showAlert("jobFormAlert", errorMsg, "error");
+        } finally {
+          document.getElementById("jobFormLoading").classList.remove("show");
         }
-        
-        function editJobForm() {
-            showAlert('jobFormAlert', 'Edit functionality: You can manually edit values in the filled form display above before submitting.', 'success');
-        }
-        
-        function downloadFilledForm() {
-            if (!currentFilledFormData || Object.keys(currentFilledFormData).length === 0) {
-                showAlert('jobFormAlert', 'No filled form data to download', 'error');
-                return;
-            }
-            
-            const formData = {
-                form_url: currentJobFormUrl,
-                filled_data: currentFilledFormData,
-                timestamp: new Date().toISOString()
-            };
-            
-            const blob = new Blob([JSON.stringify(formData, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `filled_form_${new Date().getTime()}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            
-            showAlert('jobFormAlert', '✅ Form data downloaded successfully!', 'success');
-        }
-        
-        function updateFormDataSummary() {
-            if (!currentFilledFormData || Object.keys(currentFilledFormData).length === 0) {
-                return;
-            }
-            
-            const formData = {
-                form_url: currentJobFormUrl,
-                filled_data: currentFilledFormData,
-                timestamp: new Date().toISOString(),
-                total_fields: Object.keys(currentFilledFormData).length
-            };
-            
-            const summaryDiv = document.getElementById('formDataSummary');
-            const jsonDiv = document.getElementById('formDataJSON');
-            if (summaryDiv && jsonDiv) {
-                jsonDiv.textContent = JSON.stringify(formData, null, 2);
-            }
-        }
-        
-        function showFormData() {
-            const summaryDiv = document.getElementById('formDataSummary');
-            if (summaryDiv) {
-                if (summaryDiv.style.display === 'none') {
-                    summaryDiv.style.display = 'block';
-                    updateFormDataSummary();
-                } else {
-                    summaryDiv.style.display = 'none';
-                }
-            }
-        }
-        
-        function copyFilledForm() {
-            if (!currentFilledFormData || Object.keys(currentFilledFormData).length === 0) {
-                showAlert('jobFormAlert', 'No filled form data to copy', 'error');
-                return;
-            }
-            
-            const formData = {
-                form_url: currentJobFormUrl,
-                filled_data: currentFilledFormData,
-                timestamp: new Date().toISOString()
-            };
-            
-            const jsonString = JSON.stringify(formData, null, 2);
-            
-            navigator.clipboard.writeText(jsonString).then(() => {
-                showAlert('jobFormAlert', '✅ Form data copied to clipboard!', 'success');
-            }).catch(() => {
-                // Fallback for older browsers
-                const textarea = document.createElement('textarea');
-                textarea.value = jsonString;
-                document.body.appendChild(textarea);
-                textarea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textarea);
-                showAlert('jobFormAlert', '✅ Form data copied to clipboard!', 'success');
-            });
+      }
+
+      function editJobForm() {
+        showAlert(
+          "jobFormAlert",
+          "Edit functionality: You can manually edit values in the filled form display above before submitting.",
+          "success"
+        );
+      }
+
+      function downloadFilledForm() {
+        if (
+          !currentFilledFormData ||
+          Object.keys(currentFilledFormData).length === 0
+        ) {
+          showAlert("jobFormAlert", "No filled form data to download", "error");
+          return;
         }
 
-        function showAlert(id, message, type) {
-            const alert = document.getElementById(id);
-            alert.textContent = message;
-            alert.className = `alert alert-${type} show`;
+        const formData = {
+          form_url: currentJobFormUrl,
+          filled_data: currentFilledFormData,
+          timestamp: new Date().toISOString(),
+        };
+
+        const blob = new Blob([JSON.stringify(formData, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `filled_form_${new Date().getTime()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showAlert(
+          "jobFormAlert",
+          "✅ Form data downloaded successfully!",
+          "success"
+        );
+      }
+
+      function updateFormDataSummary() {
+        if (
+          !currentFilledFormData ||
+          Object.keys(currentFilledFormData).length === 0
+        ) {
+          return;
         }
 
-        function hideAlert(id) {
-            document.getElementById(id).classList.remove('show');
+        const formData = {
+          form_url: currentJobFormUrl,
+          filled_data: currentFilledFormData,
+          timestamp: new Date().toISOString(),
+          total_fields: Object.keys(currentFilledFormData).length,
+        };
+
+        const summaryDiv = document.getElementById("formDataSummary");
+        const jsonDiv = document.getElementById("formDataJSON");
+        if (summaryDiv && jsonDiv) {
+          jsonDiv.textContent = JSON.stringify(formData, null, 2);
         }
+      }
+
+      function showFormData() {
+        const summaryDiv = document.getElementById("formDataSummary");
+        if (summaryDiv) {
+          if (summaryDiv.style.display === "none") {
+            summaryDiv.style.display = "block";
+            updateFormDataSummary();
+          } else {
+            summaryDiv.style.display = "none";
+          }
+        }
+      }
+
+      function copyFilledForm() {
+        if (
+          !currentFilledFormData ||
+          Object.keys(currentFilledFormData).length === 0
+        ) {
+          showAlert("jobFormAlert", "No filled form data to copy", "error");
+          return;
+        }
+
+        const formData = {
+          form_url: currentJobFormUrl,
+          filled_data: currentFilledFormData,
+          timestamp: new Date().toISOString(),
+        };
+
+        const jsonString = JSON.stringify(formData, null, 2);
+
+        navigator.clipboard
+          .writeText(jsonString)
+          .then(() => {
+            showAlert(
+              "jobFormAlert",
+              "✅ Form data copied to clipboard!",
+              "success"
+            );
+          })
+          .catch(() => {
+            // Fallback for older browsers
+            const textarea = document.createElement("textarea");
+            textarea.value = jsonString;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand("copy");
+            document.body.removeChild(textarea);
+            showAlert(
+              "jobFormAlert",
+              "✅ Form data copied to clipboard!",
+              "success"
+            );
+          });
+      }
+
+      function showAlert(id, message, type) {
+        const alert = document.getElementById(id);
+        alert.textContent = message;
+        alert.className = `alert alert-${type} show`;
+      }
+
+      function hideAlert(id) {
+        document.getElementById(id).classList.remove("show");
+      }
     </script>
-</body>
+  </body>
 </html>
-

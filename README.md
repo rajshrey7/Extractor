@@ -5,6 +5,7 @@ A comprehensive web application for extracting text from scanned documents (ID c
 ## 🎯 Project Overview
 
 This system provides an end-to-end OCR solution that:
+
 - **Extracts text** from scanned documents (ID cards, forms, PDFs) using advanced OCR technology
 - **Auto-fills digital forms** by intelligently matching extracted data to form fields
 - **Verifies extracted data** against original sources to ensure accuracy and reliability
@@ -12,6 +13,7 @@ This system provides an end-to-end OCR solution that:
 ## ✨ Key Features
 
 ### 1. **Document OCR & Text Extraction**
+
 - Extract text from scanned documents using **YOLOv8** object detection and **EasyOCR**
 - Support for **Google Vision API** for enhanced accuracy
 - Process both **images** (JPG, PNG) and **PDF documents**
@@ -19,6 +21,7 @@ This system provides an end-to-end OCR solution that:
 - Structured JSON output for easy integration
 
 ### 2. **Intelligent Form Auto-Fill**
+
 - Automatically match extracted data to form fields
 - Confidence scoring for field matches
 - Support for Google Forms integration
@@ -26,6 +29,7 @@ This system provides an end-to-end OCR solution that:
 - Batch form filling capabilities
 
 ### 3. **Data Verification**
+
 - Compare extracted data with original/reference sources
 - Field-by-field verification with confidence scores
 - Data cleaning and normalization
@@ -33,6 +37,7 @@ This system provides an end-to-end OCR solution that:
 - Overall confidence metrics
 
 ### 4. **Modern Web Interface**
+
 - Beautiful, responsive UI with drag-and-drop file upload
 - Real-time processing feedback
 - Interactive data visualization
@@ -53,22 +58,25 @@ This system provides an end-to-end OCR solution that:
 1. **Clone or download this repository**
 
 2. **Create a virtual environment** (recommended):
+
    ```bash
    python -m venv venv
-   
+
    # On Windows:
    venv\Scripts\activate
-   
+
    # On Linux/Mac:
    source venv/bin/activate
    ```
 
 3. **Install dependencies**:
+
    ```bash
    pip install -r requirements_web.txt
    ```
 
 4. **Configure API Keys** (optional):
+
    - Edit `config.py` and add your Google Vision API key:
      ```python
      GOOGLE_VISION_API_KEY = "your-api-key-here"
@@ -81,11 +89,13 @@ This system provides an end-to-end OCR solution that:
 ### Running the Application
 
 **Start the server:**
+
 ```bash
 python run_server.py
 ```
 
 Or directly:
+
 ```bash
 python app.py
 ```
@@ -126,13 +136,16 @@ The application will be available at: **http://localhost:8000**
 ## 🔌 API Endpoints
 
 ### POST `/api/upload`
+
 Upload and process an image or PDF for OCR extraction.
 
 **Request:**
+
 - `file`: Image or PDF file (multipart/form-data)
 - `use_openai`: "true" to use Google Vision API (optional)
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -152,14 +165,17 @@ Upload and process an image or PDF for OCR extraction.
 ```
 
 ### POST `/api/verify`
+
 Verify extracted data against original source.
 
 **Request:**
+
 - `extracted_data`: JSON string of extracted fields
 - `original_data`: JSON string of original/reference fields (optional)
 - `ocr_text_block`: Raw OCR text for context (optional)
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -186,13 +202,16 @@ Verify extracted data against original source.
 ```
 
 ### POST `/api/autofill`
+
 Match extracted data to form fields.
 
 **Request:**
+
 - `form_fields`: JSON array of form field names
 - `extracted_data`: JSON string of extracted fields
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -209,9 +228,11 @@ Match extracted data to form fields.
 ```
 
 ### GET `/api/health`
+
 Health check endpoint to verify server and model status.
 
 **Response:**
+
 ```json
 {
   "status": "healthy",
@@ -246,6 +267,7 @@ extractor/
 The system can extract the following ID card and document fields:
 
 **Identity Fields:**
+
 - Name, Surname, Full Name
 - Date of Birth, Place of Birth
 - Nationality, Country
@@ -253,17 +275,20 @@ The system can extract the following ID card and document fields:
 - Personal No, National ID
 
 **Document Fields:**
+
 - Passport No, Document No
 - Card No
 - Issue Date, Expiry Date
 - Issuing Office, Issuing Authority
 
 **Contact Fields:**
+
 - Phone Number, Mobile
 - Email Address
 - Address, Street, City, State
 
 **Additional Fields:**
+
 - Height
 - Type
 - Any custom fields detected in documents
@@ -294,27 +319,32 @@ LLAMA_CLOUD_API_KEY = "your-llama-cloud-api-key"
 ## 🐛 Troubleshooting
 
 ### Model Not Found Error
+
 - Ensure `Mymodel.pt` is in the root directory
 - Check the file name matches exactly (case-sensitive)
 - Verify file permissions
 
 ### OCR Not Working
+
 - Ensure EasyOCR models are downloaded (first run will download automatically)
 - Check internet connection for initial model download
 - Verify image quality (high resolution, clear text)
 
 ### Server Won't Start
+
 - Check if port 8000 is available
 - Verify all dependencies are installed: `pip install -r requirements_web.txt`
 - Check Python version (3.8 or higher required)
 
 ### Poor Extraction Accuracy
+
 - Ensure image quality is good (high resolution, clear text)
 - Try using Google Vision API for better accuracy
 - Check if document type matches training data
 - Preprocess images (adjust brightness/contrast) if needed
 
 ### Google Vision API Errors
+
 - Verify API key is correct in `config.py`
 - Check API quota and billing status
 - Ensure API is enabled in Google Cloud Console
@@ -348,6 +378,7 @@ To customize verification logic:
 ## 📝 Dependencies
 
 ### Core Dependencies
+
 - **FastAPI**: Web framework
 - **Uvicorn**: ASGI server
 - **OpenCV**: Image processing
@@ -357,6 +388,7 @@ To customize verification logic:
 - **NumPy**: Numerical operations
 
 ### Optional Dependencies
+
 - **Google Vision API**: Enhanced OCR accuracy
 - **PyMuPDF / pdf2image**: PDF processing
 - **Selenium**: Form automation
@@ -376,6 +408,7 @@ This project is provided as-is for educational and development purposes.
 ## 📞 Support
 
 For issues, questions, or contributions:
+
 1. Check the troubleshooting section above
 2. Review the API documentation
 3. Verify all dependencies are installed correctly
