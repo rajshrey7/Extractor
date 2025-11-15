@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # Mock MOSIP Server
+  mosip-mock:
+    build:
+      context: ./mock_mosip
+      dockerfile: Dockerfile
+    container_name: mosip-mock
+    ports:
+      - "7000:7000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - mosip-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - extractor-network
+
+  # Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: extractor-backend
+    ports:
+      - "9000:9000"
+    environment:
+      - APP_HOST=0.0.0.0
+      - APP_PORT=9000
+      - MOSIP_MODE=mock
+      - MOSIP_BASE_URL=http://mosip-mock:7000
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+      - API_KEY=${API_KEY:-dev-api-key}
+      - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-key-change-in-production}
+      - GOOGLE_VISION_API_KEY=${GOOGLE_VISION_API_KEY:-}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./temp:/app/temp
+    depends_on:
+      - mosip-mock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - extractor-network
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: extractor-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:9000
+      - REACT_APP_MOSIP_URL=http://localhost:7000
+    depends_on:
+      - backend
+    networks:
+      - extractor-network
+
+  # Nginx Reverse Proxy (optional, for production)
+  nginx:
+    image: nginx:alpine
+    container_name: extractor-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - extractor-network
+    profiles:
+      - production
+
+networks:
+  extractor-network:
+    driver: bridge
+
+volumes:
+  mosip-data:
+    driver: local
