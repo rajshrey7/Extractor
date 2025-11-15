@@ -1,0 +1,273 @@
+{
+  "info": {
+    "name": "Extractor API with MOSIP Integration",
+    "description": "Complete API collection for document extraction, OCR, quality scoring, and MOSIP integration",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{auth_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:9000",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Get Auth Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "api_key",
+                  "value": "dev-api-key"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/token",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "token"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Quality Check",
+      "item": [
+        {
+          "name": "Check Image Quality",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                },
+                {
+                  "key": "image_type",
+                  "value": "document",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/quality",
+              "host": ["{{base_url}}"],
+              "path": ["api", "quality"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "OCR Processing",
+      "item": [
+        {
+          "name": "Process Single Document",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                },
+                {
+                  "key": "use_google_vision",
+                  "value": "false",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ocr",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ocr"]
+            }
+          }
+        },
+        {
+          "name": "Process Multiple Documents",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ocr/multi",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ocr", "multi"]
+            }
+          }
+        },
+        {
+          "name": "Get OCR Annotations",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ocr/annotate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ocr", "annotate"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Form Processing",
+      "item": [
+        {
+          "name": "Extract Form Fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"document_data\": {\n        \"merged_fields\": {\n            \"name\": \"John Doe\",\n            \"date_of_birth\": \"1990-01-01\"\n        }\n    },\n    \"form_fields\": [\"name\", \"date_of_birth\", \"address\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/form/extract",
+              "host": ["{{base_url}}"],
+              "path": ["api", "form", "extract"]
+            }
+          }
+        },
+        {
+          "name": "Submit Form to MOSIP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"form_data\": {\n        \"first_name\": \"John\",\n        \"last_name\": \"Doe\",\n        \"date_of_birth\": \"1990-01-01\",\n        \"gender\": \"Male\",\n        \"phone\": \"1234567890\",\n        \"address\": \"123 Test St\",\n        \"city\": \"Test City\",\n        \"postal_code\": \"12345\"\n    },\n    \"pre_registration\": true,\n    \"registration\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/form/submit",
+              "host": ["{{base_url}}"],
+              "path": ["api", "form", "submit"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MOSIP Integration",
+      "item": [
+        {
+          "name": "Check Registration Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mosip/status/:registration_id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "mosip", "status", ":registration_id"],
+              "variable": [
+                {
+                  "key": "registration_id",
+                  "value": "REG123456"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Register Android Device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"deviceId\": \"ANDROID-001\",\n    \"model\": \"Pixel 6\",\n    \"certification\": \"L0\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/android/device/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "android", "device", "register"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health & Status",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
