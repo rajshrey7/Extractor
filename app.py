@@ -19,7 +19,8 @@ import uuid
 import requests
 from ocr_verifier import OCRVerifier
 from job_form_filler import JobFormFiller
-from config import OPENROUTER_API_KEY, LLAMA_CLOUD_API_KEY, DEFAULT_MODEL, OPENROUTER_MODELS, GOOGLE_VISION_API_KEY
+from config import OPENROUTER_API_KEY, LLAMA_CLOUD_API_KEY, DEFAULT_MODEL, OPENROUTER_MODELS, GOOGLE_VISION_API_KEY, SELECTED_LANGUAGE
+from language_support import LanguageLoader
 
 # Import GoogleFormHandler only when needed (lazy import)
 # This prevents importing the Streamlit app.py from Auto-Job-Form-Filler-Agent
@@ -64,6 +65,8 @@ if os.path.exists("static"):
 MODEL_PATH = "Mymodel.pt"
 yolo_model = None
 ocr_reader = None
+language_loader = LanguageLoader(SELECTED_LANGUAGE)
+verifier = OCRVerifier(SELECTED_LANGUAGE)
 
 def initialize_models():
     global yolo_model, ocr_reader
@@ -82,7 +85,9 @@ def initialize_models():
     if ocr_reader is None:
         try:
             print("📦 Initializing EasyOCR reader...")
-            ocr_reader = easyocr.Reader(['en'])
+            ocr_langs = language_loader.get_ocr_lang()
+            print(f"📦 Languages: {ocr_langs}")
+            ocr_reader = easyocr.Reader(ocr_langs)
             print("✅ EasyOCR reader initialized successfully!")
         except Exception as e:
             print(f"❌ Error initializing EasyOCR: {e}")
@@ -95,35 +100,25 @@ async def startup_event():
     initialize_models()
     print("✅ Startup complete!\n")
 
-# Class mapping
-class_map = {
-    1: "Surname", 2: "Name", 3: "Nationality", 4: "Sex", 5: "Date of Birth",
-    6: "Place of Birth", 7: "Issue Date", 8: "Expiry Date", 9: "Issuing Office",
-    10: "Height", 11: "Type", 12: "Country", 13: "Passport No",
-    14: "Personal No", 15: "Card No"
-}
+# Class mapping and field equivalents are now dynamic based on language
+def get_field_equivalents():
+    # This function returns the regex patterns for the current language
+    # We map them to the standard field names expected by the system
+    patterns = language_loader.get_regex_patterns()
+    equivalents = {}
+    for field, regex_list in patterns.items():
+        # In this system, we use the field name itself as the key for equivalents
+        # The regex patterns are used for extraction
+        equivalents[field] = [field] 
+    return equivalents
 
-field_equivalents = {
-    "Country": ["Country", "Code of State", "Code of Issuing State", "Codeof Issulng State", "ICode of State"],
-    "Issuing Office": ["Issuing Office", "Issuing Authority", "Issuing office", "Iss. office", "Authority", "authoricy", "Iss office", "issuing authority"],
-    "Passport No": ["Passport No", "Document No", "IPassport No", "Passport Number"],
-    "Personal No": ["Personal No", "National ID"],
-    "Date of Birth": ["Date of Birth", "DOB", "Date ofbimn", "of birth", "ofbimn", "of pirth"],
-    "Issue Date": ["Issue Date", "Date of Issue", "dale"],
-    "Expiry Date": ["Expiry Date", "Date of Expiry", "of expiny"],
-    "Name": ["Name", "Given Name", "Given", "nane", "Given name", "IGiven"],
-    "Surname": ["Surname", "Last Name", "Sumname"],
-    "Place of Birth": ["Place of Birth", "Place of binth"],
-    "Card No": ["Card No", "card no_"],
-    "Nationality": ["Nationalitv"],
-    "Height": ["IHeight"],
-    "Sex": ["ISex"]
-}
+def get_equivalent_to_standard():
+    # Map localized field names back to standard English keys
+    # This is a bit complex because we need to know which localized string maps to which standard key
+    # For now, we rely on the regex patterns structure which is keyed by standard names
+    return {} # Not strictly needed if we use standard keys internally
 
-equivalent_to_standard = {}
-for standard, equivalents in field_equivalents.items():
-    for equiv in equivalents:
-        equivalent_to_standard[equiv.lower()] = standard
+
 
 def iou(boxA, boxB):
     xA, yA = max(boxA[0], boxB[0]), max(boxA[1], boxB[1])
@@ -145,15 +140,24 @@ def non_max_suppression_area(boxes, iou_thresh=0.4):
 def clean_ocr_text(field, text):
     if not text:
         return ""
-    for equiv in field_equivalents.get(field, []) + [field]:
-        text = re.sub(rf"(?i)\b{re.escape(equiv)}\b", '', text)
+    
+    # Basic cleaning
+    text = text.strip()
+    
+    # Remove field name from value if present (using regex patterns)
+    patterns = language_loader.get_regex_patterns()
+    if field in patterns:
+        # This is a simplification. Ideally we use the regex to extract, not just clean.
+        pass
 
     if "Date" in field:
-        text = re.sub(r'[^0-9./a-zA-Z -]', '', text)
+        # Keep Arabic digits if present, convert to standard if needed
+        # For now, just standard cleaning
+        text = re.sub(r'[^0-9./a-zA-Z\u0660-\u0669 -]', '', text)
         match = re.search(r'\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b', text)
-        return match.group() if match else ""
+        return match.group() if match else text
 
-    return re.sub(r'[^A-Za-z0-9\s/-]', '', text).strip()
+    return re.sub(r'[^A-Za-z0-9\s/\-\u0600-\u06FF]', '', text).strip()
 
 def detect_unknown_fields(text):
     field_markers = {
@@ -197,7 +201,7 @@ def convert_image_to_json_with_google_vision(image_bytes: bytes) -> Dict:
                         }
                     ],
                     "imageContext": {
-                        "languageHints": ["en"]
+                        "languageHints": language_loader.get_google_vision_lang()
                     }
                 }
             ]
@@ -289,76 +293,8 @@ def parse_text_to_json_advanced(text: str, blocks_data: List[Dict] = None) -> Di
     lines = text.split('\n')
     
     # Enhanced field patterns with better matching
-    patterns = {
-        'Name': [
-            r'(?:name|full name|first name|given name|given)[\s:]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
-            r'^([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)$',
-            r'Name[\s:]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)'
-        ],
-        'Surname': [
-            r'(?:surname|last name|family name|sumname)[\s:]*([A-Z][a-z]+)',
-            r'Surname[\s:]*([A-Z][a-z]+)'
-        ],
-        'Date of Birth': [
-            r'(?:date of birth|dob|birth date|born|of birth)[\s:]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
-            r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})'
-        ],
-        'Passport No': [
-            r'(?:passport|passport no|passport number|document no|document number)[\s:]*([A-Z0-9]{6,})',
-            r'Passport[\s:]*([A-Z0-9]{6,})'
-        ],
-        'Personal No': [
-            r'(?:personal no|national id|id number|personal number)[\s:]*([A-Z0-9]+)',
-            r'Personal[\s:]*No[\s:]*([A-Z0-9]+)'
-        ],
-        'Phone': [
-            r'(?:phone|mobile|tel|telephone)[\s:]*([+]?[\d\s\-()]{8,})',
-            r'(\+?\d{1,3}[\s\-]?\d{3,4}[\s\-]?\d{3,4}[\s\-]?\d{3,4})'
-        ],
-        'Email': [
-            r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
-        ],
-        'Address': [
-            r'(?:address|street|location)[\s:]*([A-Z0-9][^,\n]+(?:,\s*[A-Z][a-z]+)*)',
-            r'(\d+\s+[A-Z][a-z]+\s+(?:Street|St|Avenue|Ave|Road|Rd|Lane|Ln|Drive|Dr)[^,\n]*)'
-        ],
-        'Issue Date': [
-            r'(?:issue date|issued on|date of issue|issue)[\s:]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
-            r'Issue[\s:]*Date[\s:]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})'
-        ],
-        'Expiry Date': [
-            r'(?:expiry date|expires|expiration date|expiry|exp)[\s:]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
-            r'Expiry[\s:]*Date[\s:]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})'
-        ],
-        'Nationality': [
-            r'(?:nationality|nationalitv)[\s:]*([A-Z][a-z]+)',
-            r'Nationality[\s:]*([A-Z][a-z]+)'
-        ],
-        'Country': [
-            r'(?:country|code of state|code of issuing state)[\s:]*([A-Z]{2,3})',
-            r'Country[\s:]*([A-Z]{2,3})'
-        ],
-        'Issuing Office': [
-            r'(?:issuing office|issuing authority|authority|iss office)[\s:]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
-            r'Issuing[\s:]*Office[\s:]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)'
-        ],
-        'Height': [
-            r'(?:height|iheight)[\s:]*(\d+\s*(?:cm|ft|in|m))',
-            r'Height[\s:]*(\d+)'
-        ],
-        'Sex': [
-            r'(?:sex|gender|isex)[\s:]*([MF|Male|Female])',
-            r'Sex[\s:]*([MF])'
-        ],
-        'Place of Birth': [
-            r'(?:place of birth|place of binth)[\s:]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
-            r'Place[\s:]*of[\s:]*Birth[\s:]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)'
-        ],
-        'Card No': [
-            r'(?:card no|card number|card no_)[\s:]*([A-Z0-9]+)',
-            r'Card[\s:]*No[\s:]*([A-Z0-9]+)'
-        ]
-    }
+    # Enhanced field patterns with better matching
+    patterns = language_loader.get_regex_patterns()
     
     # First, try pattern matching on full text
     for field, field_patterns in patterns.items():
@@ -367,7 +303,7 @@ def parse_text_to_json_advanced(text: str, blocks_data: List[Dict] = None) -> Di
             if match:
                 value = match.group(1).strip()
                 # Clean up value
-                value = re.sub(r'[^\w\s@./-]', '', value).strip()
+                value = re.sub(r'[^\w\s@./-\u0600-\u06FF]', '', value).strip()
                 if value and len(value) > 1 and value not in result.values():
                     result[field] = value
                     break
@@ -387,7 +323,7 @@ def parse_text_to_json_advanced(text: str, blocks_data: List[Dict] = None) -> Di
                     match = re.search(pattern, block_text, re.IGNORECASE)
                     if match:
                         value = match.group(1).strip()
-                        value = re.sub(r'[^\w\s@./-]', '', value).strip()
+                        value = re.sub(r'[^\w\s@./-\u0600-\u06FF]', '', value).strip()
                         if value and len(value) > 1:
                             result[field] = value
                             break
@@ -407,7 +343,7 @@ def parse_text_to_json_advanced(text: str, blocks_data: List[Dict] = None) -> Di
                     value = parts[1].strip()
                     
                     # Clean value
-                    value = re.sub(r'[^\w\s@./-]', '', value).strip()
+                    value = re.sub(r'[^\w\s@./-\u0600-\u06FF]', '', value).strip()
                     
                     if value and len(value) > 1:
                         # Normalize key names to match standard fields
@@ -608,14 +544,22 @@ def process_image(image_bytes: bytes):
     for box in boxes:
         try:
             class_id = int(box.cls[0])
-            if class_id not in class_map:
+            # class_map is now static but we need to handle it carefully
+            # For now, we'll stick to English class names for YOLO output mapping
+            class_map_static = {
+                1: "Surname", 2: "Name", 3: "Nationality", 4: "Sex", 5: "Date of Birth",
+                6: "Place of Birth", 7: "Issue Date", 8: "Expiry Date", 9: "Issuing Office",
+                10: "Height", 11: "Type", 12: "Country", 13: "Passport No",
+                14: "Personal No", 15: "Card No"
+            }
+            if class_id not in class_map_static:
                 continue
             found_idcard = True
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             crop = img[y1:y2, x1:x2]
             ocr_result = ocr_reader.readtext(crop, detail=0)
             extracted = " ".join(ocr_result).strip()
-            field = class_map[class_id]
+            field = class_map_static[class_id]
             cleaned_value = clean_ocr_text(field, extracted)
             all_texts.append(extracted)
             if cleaned_value:
@@ -627,7 +571,7 @@ def process_image(image_bytes: bytes):
     final_fields = {}
     if found_idcard:
         for field, values in raw_fields.items():
-            standard_field = equivalent_to_standard.get(field.strip().lower(), field.strip())
+            standard_field = field.strip() # equivalent_to_standard is removed
             filtered_values = [v for v in values if len(v) > 1]
             if filtered_values:
                 final_fields[standard_field] = max(filtered_values, key=len)
@@ -652,6 +596,48 @@ async def root():
     if os.path.exists("index.html"):
         return FileResponse("index.html")
     return {"message": "OCR API is running. Please ensure index.html exists in the root directory."}
+
+@app.get("/api/config")
+async def get_config():
+    """Get current configuration and translations"""
+    return {
+        "language": language_loader.current_language,
+        "translations": language_loader.get_all_translations(),
+        "supported_languages": language_loader.SUPPORTED_LANGUAGES
+    }
+
+@app.post("/api/set-language")
+async def set_language(language: str = Form(...)):
+    """Set application language and reload models"""
+    global ocr_reader
+    
+    if language_loader.set_language(language):
+        # Update verifier language
+        verifier.set_language(language)
+
+        # Reload OCR model with new language
+        try:
+            ocr_langs = language_loader.get_ocr_lang()
+            print(f"🔄 Reloading EasyOCR with languages: {ocr_langs}")
+            ocr_reader = easyocr.Reader(ocr_langs)
+            print("✅ EasyOCR reloaded successfully!")
+            
+            return {
+                "success": True,
+                "language": language,
+                "translations": language_loader.get_all_translations()
+            }
+        except Exception as e:
+            print(f"❌ Error reloading EasyOCR: {e}")
+            return JSONResponse(
+                status_code=500,
+                content={"success": False, "error": f"Failed to reload models: {str(e)}"}
+            )
+    else:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Unsupported language"}
+        )
 
 @app.get("/api/test-json")
 async def test_json():

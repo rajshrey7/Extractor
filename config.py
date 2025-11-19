@@ -28,3 +28,7 @@ GOOGLE_VISION_API_KEY = "AIzaSyCYEGFhiCBloCtcULbukuiSHr6cOndt-EE"
 
 # OpenAI API Key (deprecated - using Google Vision instead)
 OPENAI_API_KEY = None
+
+# Language Configuration
+SUPPORTED_LANGUAGES = ["en", "ar"]
+SELECTED_LANGUAGE = "en"

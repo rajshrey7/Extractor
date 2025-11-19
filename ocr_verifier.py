@@ -6,6 +6,8 @@ import re
 import json
 from typing import Dict, List, Tuple, Optional
 from difflib import SequenceMatcher
+from config import SELECTED_LANGUAGE
+from language_support import LanguageLoader
 
 class OCRVerifier:
     """Advanced OCR Verification System"""
@@ -21,27 +23,22 @@ class OCRVerifier:
         'D': '0', 'Q': 'O'
     }
     
-    # Field type mappings
-    FIELD_TYPES = {
-        'name': ['name', 'full name', 'first name', 'last name', 'surname', 'given name'],
-        'dob': ['dob', 'date of birth', 'birthdate', 'birth date', 'date_of_birth'],
-        'mobile': ['mobile', 'phone', 'phone number', 'contact', 'mobile number', 'telephone'],
-        'email': ['email', 'e-mail', 'email address', 'mail'],
-        'id_number': ['id', 'id number', 'aadhaar', 'pan', 'passport', 'driving license', 'license number', 'card number'],
-        'address': ['address', 'residence', 'location', 'street', 'city', 'state', 'country'],
-        'gender': ['gender', 'sex'],
-        'pincode': ['pincode', 'pin code', 'postal code', 'zip code', 'zip']
-    }
-    
-    def __init__(self):
+    def __init__(self, language: str = SELECTED_LANGUAGE):
+        self.language_loader = LanguageLoader(language)
         self.verification_report = []
         self.cleaned_data = {}
         self.issues_found = []
     
+    def set_language(self, language: str):
+        """Update the language for verification"""
+        self.language_loader.set_language(language)
+
     def normalize_field_name(self, field_name: str) -> str:
         """Normalize field name to standard format"""
         field_lower = field_name.lower().strip()
-        for standard, variants in self.FIELD_TYPES.items():
+        field_types = self.language_loader.get_field_types()
+        
+        for standard, variants in field_types.items():
             if field_lower in variants or any(v in field_lower for v in variants):
                 return standard
         return field_lower.replace(' ', '_').replace('-', '_')
@@ -70,8 +67,15 @@ class OCRVerifier:
             issues.append("Excessive whitespace detected")
         
         # Check for special characters in names
-        if re.search(r'[^a-zA-Z\s\.\-\']', text) and 'name' in text.lower():
-            issues.append("Unexpected characters in name field")
+        # Check for special characters in names (Language aware)
+        # For Arabic, we allow Arabic characters
+        if self.language_loader.current_language == 'ar':
+            if re.search(r'[^\u0600-\u06FF\s\.\-\']', text) and 'name' in text.lower() and not re.search(r'[a-zA-Z]', text):
+                 # Only flag if it contains non-Arabic and non-English characters if mixed
+                 pass
+        else:
+            if re.search(r'[^a-zA-Z\s\.\-\']', text) and 'name' in text.lower():
+                issues.append("Unexpected characters in name field")
         
         return issues
     

@@ -23,7 +23,13 @@ try:
     print("   Press Ctrl+C to stop the server\n")
     print("="*60 + "\n")
     
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+    try:
+        print("Attempting to start on port 8001...")
+        uvicorn.run(app, host="127.0.0.1", port=8001, log_level="info")
+    except Exception as e:
+        print(f"Failed to start on port 8001: {e}")
+        print("Attempting to start on port 8002...")
+        uvicorn.run(app, host="127.0.0.1", port=8002, log_level="info")
     
 except ImportError as e:
     print(f"\n❌ Import Error: {e}")

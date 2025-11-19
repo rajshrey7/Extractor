@@ -10,6 +10,11 @@ import sys
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Dict, List, Optional, Any, Tuple, Union
+from config import OPENROUTER_API_KEY, OPENROUTER_MODELS, DEFAULT_MODEL, SELECTED_LANGUAGE
+from language_support import LanguageLoader
+
+# Initialize Language Loader
+language_loader = LanguageLoader(SELECTED_LANGUAGE)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -182,11 +187,22 @@ class JobFormFiller:
             "type": "text",
             "required": False,
             "weight": 0.3
+        },
+        "Date": {
+            "aliases": ["Date", "Today's Date", "Current Date", "Date of Application"],
+            "type": "date",
+            "required": False,
+            "weight": 0.5
         }
     }
     
+    def get_job_field_aliases(self):
+        """Get job field aliases based on current language"""
+        return language_loader.get_job_field_aliases()
+    
     def __init__(self):
         self.form_handler = None
+        self.field_aliases = self.get_job_field_aliases()
     
     def match_field_to_data(self, question_text: str, extracted_data: Dict[str, Any], threshold: float = 0.5) -> Optional[tuple]:
         """
@@ -219,7 +235,8 @@ class JobFormFiller:
                     best_match = (field_key, field_value, score)
             
             # Check aliases
-            aliases = self.JOB_FIELD_ALIASES.get(field_key_lower, [])
+            aliases_info = self.field_aliases.get(field_key_lower, {})
+            aliases = aliases_info.get("aliases", [])
             for alias in aliases:
                 if alias in question_lower or question_lower in alias:
                     score = SequenceMatcher(None, alias, question_lower).ratio()
