@@ -17,6 +17,7 @@ from difflib import SequenceMatcher
 import os
 import uuid
 import requests
+import quality_score
 from ocr_verifier import OCRVerifier
 from job_form_filler import JobFormFiller
 from config import OPENROUTER_API_KEY, LLAMA_CLOUD_API_KEY, DEFAULT_MODEL, OPENROUTER_MODELS, GOOGLE_VISION_API_KEY, SELECTED_LANGUAGE
@@ -801,6 +802,14 @@ async def upload_image(
         print(f"Is PDF: {is_pdf}, Use OpenAI: {use_openai_flag}")
         sys.stdout.flush()
         
+        # Calculate quality score for images
+        quality_report = None
+        if not is_pdf:
+            print("Calculating image quality score...")
+            quality_report = quality_score.get_quality_report(contents)
+            print(f"Quality Report: {quality_report}")
+            sys.stdout.flush()
+        
         if is_pdf:
             print("Processing PDF...")
             sys.stdout.flush()
@@ -834,7 +843,8 @@ async def upload_image(
                         "found_idcard": True,
                         "google_vision_converted": True,
                         "method": "google_vision",
-                        "file_type": "image"
+                        "file_type": "image",
+                        "quality": quality_report
                     })
                 else:
                     print("Google Vision returned empty result, falling back to YOLO...")
@@ -857,6 +867,7 @@ async def upload_image(
             return JSONResponse(content={
                 "success": True,
                 "filename": filename,
+                "quality": quality_report,
                 **result
             })
         except Exception as img_err:
@@ -895,6 +906,82 @@ async def upload_image(
                 "success": False,
                 "error": f"{error_type}: {error_msg}",
                 "detail": "Check server console for full traceback"
+            }
+        )
+
+@app.post("/api/camera_upload")
+async def camera_upload(
+    image: UploadFile = File(...),
+    use_openai: Optional[str] = Form(None)
+):
+    """Handle camera captured image upload"""
+    import sys
+    import shutil
+    from datetime import datetime
+    
+    try:
+        print("\n" + "=" * 70)
+        print("CAMERA UPLOAD RECEIVED")
+        print("=" * 70)
+        
+        # Create uploads directory if not exists
+        os.makedirs("uploads", exist_ok=True)
+        
+        # Generate filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"camera_{timestamp}.jpg"
+        filepath = os.path.join("uploads", filename)
+        
+        # Read content
+        contents = await image.read()
+        
+        # Save to file (optional, for debugging/logging)
+        with open(filepath, "wb") as f:
+            f.write(contents)
+            
+        print(f"Saved camera image to {filepath}")
+        
+        # Calculate quality score
+        print("Calculating image quality score...")
+        quality_report = quality_score.get_quality_report(contents)
+        print(f"Quality Report: {quality_report}")
+        
+        # Process image
+        use_openai_flag = use_openai and use_openai.lower() == 'true'
+        
+        if use_openai_flag:
+            print("Using Google Vision API...")
+            result = convert_image_to_json_with_google_vision(contents)
+            # Add general text field for compatibility
+            if result and "general_text" not in result:
+                result["general_text"] = []
+            
+            # Add metadata
+            result["google_vision_converted"] = True
+            result["extracted_fields"] = result.copy()
+            if "general_text" in result["extracted_fields"]:
+                del result["extracted_fields"]["general_text"]
+        else:
+            print("Using YOLO + EasyOCR...")
+            result = process_image(contents)
+            
+        result["file_type"] = "image"
+        result["success"] = True
+        result["image_path"] = f"/uploads/{filename}"
+        result["quality"] = quality_report
+        
+        return JSONResponse(content=result)
+
+    except Exception as e:
+        print(f"❌ Error processing camera upload: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False, 
+                "error": str(e),
+                "detail": str(e)
             }
         )
 

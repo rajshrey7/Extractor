@@ -355,6 +355,42 @@
     .match-item.no-match {
       border-left-color: #dc3545;
     }
+
+    /* Camera Modal Styles */
+    .camera-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .camera-modal-content {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 800px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    /* Quality Score UI */
+    #qualityScoreContainer {
+      font-family: 'Inter', sans-serif;
+    }
+
+    #qualityScoreContainer strong {
+      color: #333;
+    }
   </style>
 </head>
 
@@ -406,6 +442,43 @@
             Supports: JPG, PNG, JPEG, PDF
           </p>
           <input type="file" id="fileInput" accept="image/*,.pdf" />
+        </div>
+
+        <!-- Camera Button Section -->
+        <div style="text-align: center; margin-top: 15px;">
+          <button class="btn" onclick="initCamera()"
+            style="background: #4a5568; display: inline-flex; align-items: center; gap: 8px;">
+            📷 Use Camera
+          </button>
+        </div>
+
+        <!-- Camera Modal -->
+        <div id="cameraModal"
+          style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; flex-direction: column;">
+          <div
+            style="background: white; padding: 20px; border-radius: 15px; width: 90%; max-width: 640px; position: relative;">
+            <h3 style="margin-bottom: 15px; text-align: center;">Take a Photo</h3>
+
+            <div
+              style="position: relative; width: 100%; height: 0; padding-bottom: 75%; background: #000; border-radius: 8px; overflow: hidden;">
+              <video id="cameraVideo" autoplay playsinline
+                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;"></video>
+              <canvas id="cameraCanvas" style="display: none;"></canvas>
+              <img id="capturedPreview"
+                style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;" />
+            </div>
+
+            <div id="cameraError" style="color: red; text-align: center; margin-top: 10px; display: none;"></div>
+
+            <div style="margin-top: 20px; text-align: center; display: flex; justify-content: center; gap: 10px;">
+              <button id="captureBtn" class="btn" onclick="captureImage()">Capture</button>
+              <button id="retakeBtn" class="btn" onclick="retakeImage()"
+                style="display: none; background: #718096;">Retake</button>
+              <button id="useImageBtn" class="btn" onclick="uploadCapturedImage()"
+                style="display: none; background: #28a745;">Use Image</button>
+              <button class="btn" onclick="closeCameraModal()" style="background: #dc3545;">Cancel</button>
+            </div>
+          </div>
         </div>
 
         <div id="imagePreview" style="display: none; text-align: center">
@@ -795,6 +868,22 @@
     </div>
   </div>
 
+  <!-- Quality Score Modal -->
+  <div id="qualityModal" class="camera-modal" style="z-index: 1001;">
+    <div class="camera-modal-content" style="max-width: 500px;">
+      <h2>Image Quality Check</h2>
+
+      <div id="qualityScoreContainer" style="width: 100%; margin: 20px 0;">
+        <!-- Quality details will be injected here -->
+      </div>
+
+      <div class="controls">
+        <button class="btn btn-secondary" onclick="retakeQuality()">Retake / Reupload</button>
+        <button class="btn btn-primary" id="proceedQualityBtn" onclick="proceedQuality()">Proceed to OCR</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     function app() {
       return {
@@ -949,6 +1038,122 @@
       reader.readAsDataURL(file);
     }
 
+    // Expose handleUploadSuccess to window for camera.js
+    window.handleUploadSuccess = function (data) {
+      // Debug logging
+      console.log("API Response:", data);
+      console.log("extracted_fields:", data.extracted_fields);
+      console.log("extracted_fields type:", typeof data.extracted_fields);
+
+      extractedDataGlobal = data.extracted_fields || {};
+
+      // Ensure we have extracted fields - handle all cases
+      let extractedFields = {};
+
+      if (data.extracted_fields) {
+        if (
+          typeof data.extracted_fields === "object" &&
+          !Array.isArray(data.extracted_fields)
+        ) {
+          extractedFields = data.extracted_fields;
+        } else {
+          extractedFields = {
+            error: "Invalid extracted_fields format",
+            raw: String(data.extracted_fields),
+          };
+        }
+      }
+
+      // If empty, show a message with debug info
+      if (Object.keys(extractedFields).length === 0) {
+        extractedFields = {
+          message: "No structured fields detected",
+          general_text_available:
+            data.general_text && data.general_text.length > 0,
+          general_text_count: data.general_text
+            ? data.general_text.length
+            : 0,
+          found_idcard: data.found_idcard || false,
+          ai_error: data.ai_error || null,
+          debug: "No fields extracted from image",
+        };
+      }
+
+      // Format JSON with proper indentation
+      const jsonString = JSON.stringify(extractedFields, null, 2);
+
+      // Display JSON in formatted view
+      const jsonDisplay = document.getElementById("extractedJSON");
+      if (jsonDisplay) {
+        jsonDisplay.textContent = jsonString;
+      } else {
+        console.error("extractedJSON element not found!");
+      }
+
+      console.log("JSON String:", jsonString);
+
+      // Display extracted fields in formatted view
+      const fieldsDiv = document.getElementById("extractedFields");
+      fieldsDiv.innerHTML = "";
+
+      if (Object.keys(data.extracted_fields).length > 0) {
+        for (const [field, value] of Object.entries(
+          data.extracted_fields
+        )) {
+          const fieldItem = document.createElement("div");
+          fieldItem.className = "field-item";
+          fieldItem.innerHTML = `
+                            <span class="field-label">${field}:</span>
+                            <span class="field-value">${value}</span>
+                        `;
+          fieldsDiv.appendChild(fieldItem);
+        }
+      } else {
+        fieldsDiv.innerHTML =
+          '<p style="color: #666;">No structured fields detected. Check general text below.</p>';
+        jsonDisplay.textContent = "{}";
+      }
+
+      // Display general text
+      if (data.general_text && data.general_text.length > 0) {
+        document.getElementById("generalTextCard").style.display =
+          "block";
+        document.getElementById("generalText").innerHTML =
+          '<p style="color: #666; line-height: 1.8;">' +
+          data.general_text.join("<br>") +
+          "</p>";
+      } else {
+        document.getElementById("generalTextCard").style.display = "none";
+      }
+
+      // Populate extracted data textarea in other tabs
+      document.getElementById("extractedData").value = jsonString;
+      document.getElementById("autofillExtractedData").value = jsonString;
+
+      // Store for job form filler
+      extractedDataGlobal = data.extracted_fields || {};
+
+      document.getElementById("results").classList.add("show");
+      // Scroll to results
+      document
+        .getElementById("results")
+        .scrollIntoView({ behavior: "smooth", block: "start" });
+
+      let successMsg =
+        "Text extracted successfully! JSON format ready to use.";
+      if (data.file_type === "pdf") {
+        successMsg += ` 📄 Processed ${data.total_pages || 1
+          } PDF page(s).`;
+      }
+      if (data.google_vision_converted) {
+        successMsg += " ✨ Enhanced with Google Vision API.";
+      } else if (data.google_vision_error) {
+        successMsg +=
+          " (Google Vision unavailable, using YOLO extraction)";
+      }
+      showAlert("alert", successMsg, "success");
+    };
+
     async function processImage() {
       const fileInput = document.getElementById("fileInput");
       if (!fileInput.files[0]) {
@@ -1007,118 +1212,7 @@
         const data = await response.json();
 
         if (data.success) {
-          // Debug logging
-          console.log("API Response:", data);
-          console.log("extracted_fields:", data.extracted_fields);
-          console.log("extracted_fields type:", typeof data.extracted_fields);
-
-          extractedDataGlobal = data.extracted_fields || {};
-
-          // Ensure we have extracted fields - handle all cases
-          let extractedFields = {};
-
-          if (data.extracted_fields) {
-            if (
-              typeof data.extracted_fields === "object" &&
-              !Array.isArray(data.extracted_fields)
-            ) {
-              extractedFields = data.extracted_fields;
-            } else {
-              extractedFields = {
-                error: "Invalid extracted_fields format",
-                raw: String(data.extracted_fields),
-              };
-            }
-          }
-
-          // If empty, show a message with debug info
-          if (Object.keys(extractedFields).length === 0) {
-            extractedFields = {
-              message: "No structured fields detected",
-              general_text_available:
-                data.general_text && data.general_text.length > 0,
-              general_text_count: data.general_text
-                ? data.general_text.length
-                : 0,
-              found_idcard: data.found_idcard || false,
-              ai_error: data.ai_error || null,
-              debug: "No fields extracted from image",
-            };
-          }
-
-          // Format JSON with proper indentation
-          const jsonString = JSON.stringify(extractedFields, null, 2);
-
-          // Display JSON in formatted view
-          const jsonDisplay = document.getElementById("extractedJSON");
-          if (jsonDisplay) {
-            jsonDisplay.textContent = jsonString;
-          } else {
-            console.error("extractedJSON element not found!");
-          }
-
-          console.log("JSON String:", jsonString);
-
-          // Display extracted fields in formatted view
-          const fieldsDiv = document.getElementById("extractedFields");
-          fieldsDiv.innerHTML = "";
-
-          if (Object.keys(data.extracted_fields).length > 0) {
-            for (const [field, value] of Object.entries(
-              data.extracted_fields
-            )) {
-              const fieldItem = document.createElement("div");
-              fieldItem.className = "field-item";
-              fieldItem.innerHTML = `
-                                <span class="field-label">${field}:</span>
-                                <span class="field-value">${value}</span>
-                            `;
-              fieldsDiv.appendChild(fieldItem);
-            }
-          } else {
-            fieldsDiv.innerHTML =
-              '<p style="color: #666;">No structured fields detected. Check general text below.</p>';
-            jsonDisplay.textContent = "{}";
-          }
-
-          // Display general text
-          if (data.general_text && data.general_text.length > 0) {
-            document.getElementById("generalTextCard").style.display =
-              "block";
-            document.getElementById("generalText").innerHTML =
-              '<p style="color: #666; line-height: 1.8;">' +
-              data.general_text.join("<br>") +
-              "</p>";
-          } else {
-            document.getElementById("generalTextCard").style.display = "none";
-          }
-
-          // Populate extracted data textarea in other tabs
-          document.getElementById("extractedData").value = jsonString;
-          document.getElementById("autofillExtractedData").value = jsonString;
-
-          // Store for job form filler
-          extractedDataGlobal = data.extracted_fields || {};
-
-          document.getElementById("results").classList.add("show");
-          // Scroll to results
-          document
-            .getElementById("results")
-            .scrollIntoView({ behavior: "smooth", block: "start" });
-
-          let successMsg =
-            "Text extracted successfully! JSON format ready to use.";
-          if (data.file_type === "pdf") {
-            successMsg += ` 📄 Processed ${data.total_pages || 1
-              } PDF page(s).`;
-          }
-          if (data.google_vision_converted) {
-            successMsg += " ✨ Enhanced with Google Vision API.";
-          } else if (data.google_vision_error) {
-            successMsg +=
-              " (Google Vision unavailable, using YOLO extraction)";
-          }
-          showAlert("alert", successMsg, "success");
+          window.handleUploadSuccess(data);
         } else {
           showAlert("alert", "Failed to process file", "error");
         }
@@ -1384,6 +1478,273 @@
         console.error("Verify error:", error);
       } finally {
         document.getElementById("verifyLoading").classList.remove("show");
+      }
+    }
+
+    // Global variable to store data pending quality check
+    let pendingOCRData = null;
+
+    window.handleUploadSuccess = function (data) {
+      // Check if quality report exists
+      if (data.quality) {
+        pendingOCRData = data;
+        showQualityModal(data.quality);
+      } else {
+        // If no quality report (e.g. PDF), proceed directly
+        displayOCRResults(data);
+      }
+    };
+
+    function showQualityModal(quality) {
+      const modal = document.getElementById('qualityModal');
+      const container = document.getElementById('qualityScoreContainer');
+
+      // Determine colors based on status
+      const blurColor = quality.blur_score > 150 ? 'green' : (quality.blur_score >= 70 ? 'orange' : 'red');
+      const lightingColor = quality.lighting_score >= 90 && quality.lighting_score <= 150 ? 'green' : 'orange';
+      const overallColor = quality.overall === 'GOOD' ? 'green' : (quality.overall === 'AVERAGE' ? 'orange' : 'red');
+
+      container.innerHTML = `
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 5px solid ${overallColor};">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+            <strong>Overall Quality:</strong>
+            <span style="color: ${overallColor}; font-weight: bold;">${quality.overall}</span>
+          </div>
+          
+          <div style="margin-bottom: 5px;">
+            <span>Blur Score:</span>
+            <span style="float: right; color: ${blurColor};">${quality.blur_score}</span>
+            <div style="background: #ddd; height: 5px; border-radius: 3px; margin-top: 2px;">
+              <div style="background: ${blurColor}; width: ${Math.min(quality.blur_score / 2, 100)}%; height: 100%; border-radius: 3px;"></div>
+            </div>
+          </div>
+          
+          <div style="margin-bottom: 15px;">
+            <span>Lighting Score:</span>
+            <span style="float: right; color: ${lightingColor};">${quality.lighting_score}</span>
+             <div style="background: #ddd; height: 5px; border-radius: 3px; margin-top: 2px;">
+              <div style="background: ${lightingColor}; width: ${Math.min(quality.lighting_score / 2.55, 100)}%; height: 100%; border-radius: 3px;"></div>
+            </div>
+          </div>
+          
+          <p style="margin: 0; font-style: italic; color: #555;">${quality.message}</p>
+        </div>
+      `;
+
+      modal.style.display = 'flex';
+    }
+
+    function proceedQuality() {
+      document.getElementById('qualityModal').style.display = 'none';
+      if (pendingOCRData) {
+        displayOCRResults(pendingOCRData);
+        pendingOCRData = null;
+      }
+    }
+
+    function retakeQuality() {
+      document.getElementById('qualityModal').style.display = 'none';
+      pendingOCRData = null;
+      // If it was a camera capture, re-open camera
+      // We can check if the camera modal was previously open or just open it
+      // For now, let's just reset. User can click Camera or Upload again.
+      // Optionally, we could try to detect source.
+      // But "Retake / Reupload" implies user choice.
+
+      // If camera.js is loaded, we might want to ensure camera is stopped or ready
+      if (typeof openCameraModal === 'function') {
+        // If we want to immediately open camera:
+        // openCameraModal(); 
+        // But maybe user wants to upload instead.
+      }
+    }
+
+    function displayOCRResults(data) {
+      console.log("Processing success:", data);
+
+      // Hide loading
+      document.getElementById("loading").classList.remove("show");
+
+      let extractedFields = {};
+
+      if (data.extracted_fields) {
+        if (
+          typeof data.extracted_fields === "object" &&
+          !Array.isArray(data.extracted_fields)
+        ) {
+          extractedFields = data.extracted_fields;
+        } else {
+          extractedFields = {
+            error: "Invalid extracted_fields format",
+            raw: String(data.extracted_fields),
+          };
+        }
+      }
+
+      // If empty, show a message with debug info
+      if (Object.keys(extractedFields).length === 0) {
+        extractedFields = {
+          message: "No structured fields detected",
+          general_text_available:
+            data.general_text && data.general_text.length > 0,
+          general_text_count: data.general_text
+            ? data.general_text.length
+            : 0,
+          found_idcard: data.found_idcard || false,
+          ai_error: data.ai_error || null,
+          debug: "No fields extracted from image",
+        };
+      }
+
+      // Format JSON with proper indentation
+      const jsonString = JSON.stringify(extractedFields, null, 2);
+
+      // Display JSON in formatted view
+      const jsonDisplay = document.getElementById("extractedJSON");
+      if (jsonDisplay) {
+        jsonDisplay.textContent = jsonString;
+      } else {
+        console.error("extractedJSON element not found!");
+      }
+
+      console.log("JSON String:", jsonString);
+
+      // Display extracted fields in formatted view
+      const fieldsDiv = document.getElementById("extractedFields");
+      fieldsDiv.innerHTML = "";
+
+      if (Object.keys(data.extracted_fields).length > 0) {
+        for (const [field, value] of Object.entries(
+          data.extracted_fields
+        )) {
+          const fieldItem = document.createElement("div");
+          fieldItem.className = "field-item";
+          fieldItem.innerHTML = `
+                            <span class="field-label">${field}:</span>
+                            <span class="field-value">${value}</span>
+                        `;
+          fieldsDiv.appendChild(fieldItem);
+        }
+      } else {
+        fieldsDiv.innerHTML =
+          '<p style="color: #666;">No structured fields detected. Check general text below.</p>';
+        jsonDisplay.textContent = "{}";
+      }
+
+      // Display general text
+      if (data.general_text && data.general_text.length > 0) {
+        document.getElementById("generalTextCard").style.display =
+          "block";
+        document.getElementById("generalText").innerHTML =
+          '<p style="color: #666; line-height: 1.8;">' +
+          data.general_text.join("<br>") +
+          "</p>";
+      } else {
+        document.getElementById("generalTextCard").style.display = "none";
+      }
+
+      // Populate extracted data textarea in other tabs
+      document.getElementById("extractedData").value = jsonString;
+      document.getElementById("autofillExtractedData").value = jsonString;
+
+      // Store for job form filler
+      extractedDataGlobal = data.extracted_fields || {};
+
+      document.getElementById("results").classList.add("show");
+      // Scroll to results
+      document
+        .getElementById("results")
+        .scrollIntoView({ behavior: "smooth", block: "start" });
+
+      let successMsg =
+        "Text extracted successfully! JSON format ready to use.";
+      if (data.file_type === "pdf") {
+        successMsg += ` 📄 Processed ${data.total_pages || 1
+          } PDF page(s).`;
+      }
+      if (data.google_vision_converted) {
+        successMsg += " ✨ Enhanced with Google Vision API.";
+      } else if (data.google_vision_error) {
+        successMsg +=
+          " (Google Vision unavailable, using YOLO extraction)";
+      }
+      showAlert("alert", successMsg, "success");
+    }
+
+    async function processImage() {
+      const fileInput = document.getElementById("fileInput");
+      if (!fileInput.files[0]) {
+        showAlert(
+          "alert",
+          "Please select an image or PDF file first",
+          "error"
+        );
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", fileInput.files[0]);
+      const useOpenAI = document.getElementById("useOpenAI");
+      formData.append(
+        "use_openai",
+        useOpenAI && useOpenAI.checked ? "true" : "false"
+      );
+
+      document.getElementById("loading").classList.add("show");
+      document.getElementById("results").classList.remove("show");
+      hideAlert("alert");
+
+      try {
+        const response = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          // Try to get error details from response
+          let errorDetail = response.statusText;
+          // Clone response so we can try multiple read methods
+          const responseClone = response.clone();
+          try {
+            const errorData = await response.json();
+            errorDetail =
+              errorData.detail ||
+              errorData.error ||
+              errorData.message ||
+              errorDetail;
+          } catch {
+            try {
+              const errorText = await responseClone.text();
+              errorDetail = errorText.substring(0, 200) || errorDetail;
+            } catch {
+              // If both fail, use statusText
+              errorDetail = response.statusText || `HTTP ${response.status}`;
+            }
+          }
+          throw new Error(
+            `Server error (${response.status}): ${errorDetail}`
+          );
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+          window.handleUploadSuccess(data);
+        } else {
+          showAlert("alert", "Failed to process file", "error");
+        }
+      } catch (error) {
+        let errorMsg = "Error: " + error.message;
+        if (
+          error.message.includes("Failed to fetch") ||
+          error.message.includes("NetworkError")
+        ) {
+          errorMsg =
+            "Cannot connect to server. Make sure the server is running at http://localhost:8000";
+        }
+        showAlert("alert", errorMsg, "error");
+      } finally {
+        document.getElementById("loading").classList.remove("show");
       }
     }
 
@@ -2355,6 +2716,8 @@
       document.getElementById(id).classList.remove("show");
     }
   </script>
+
+  <script src="/static/js/camera.js"></script>
 </body>
 
 </html>
