@@ -981,6 +981,8 @@
         if (!response.ok) {
           // Try to get error details from response
           let errorDetail = response.statusText;
+          // Clone response so we can try multiple read methods
+          const responseClone = response.clone();
           try {
             const errorData = await response.json();
             errorDetail =
@@ -989,8 +991,13 @@
               errorData.message ||
               errorDetail;
           } catch {
-            const errorText = await response.text();
-            errorDetail = errorText.substring(0, 200) || errorDetail;
+            try {
+              const errorText = await responseClone.text();
+              errorDetail = errorText.substring(0, 200) || errorDetail;
+            } catch {
+              // If both fail, use statusText
+              errorDetail = response.statusText || `HTTP ${response.status}`;
+            }
           }
           throw new Error(
             `Server error (${response.status}): ${errorDetail}`
