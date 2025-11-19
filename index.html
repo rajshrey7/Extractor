@@ -66,6 +66,8 @@
       gap: 10px;
       margin-bottom: 30px;
       border-bottom: 2px solid #e0e0e0;
+      position: relative;
+      z-index: 10;
     }
 
     .tab {
@@ -74,9 +76,12 @@
       border: none;
       font-size: 1.1em;
       cursor: pointer;
-      color: #666;
+      color: #333;
+      /* Darker color for better visibility */
       transition: all 0.3s;
       border-bottom: 3px solid transparent;
+      font-weight: 600;
+      /* Bolder text */
     }
 
     .tab.active {
@@ -380,8 +385,9 @@
         <button class="tab active px-6 py-3 font-medium" onclick="switchTab('extract')" x-text="t('tab_extract')">
           Extract Text
         </button>
-        <button class="tab px-6 py-3 font-medium" onclick="switchTab('verify')" x-text="t('tab_verify')">Verify
-          Data</button>
+        <button class="tab px-6 py-3 font-medium" onclick="switchTab('verify')" x-text="t('tab_verify')">
+          Verify Data
+        </button>
         <button class="tab px-6 py-3 font-medium" onclick="switchTab('jobform')" x-text="t('tab_jobform')">
           Job Form Filler
         </button>
@@ -674,7 +680,7 @@
           <div class="alert" id="jobFormAlert"></div>
 
           <!-- Form Questions Display -->
-          <div class="results" id="formQuestionsResult" style="display: none">
+          <div class="results" id="formQuestionsResult">
             <div class="result-card">
               <h3>📝 Form Questions</h3>
               <div id="formQuestionsDisplay"></div>
@@ -682,7 +688,7 @@
           </div>
 
           <!-- Filled Form Results -->
-          <div class="results" id="jobFormResults" style="display: none">
+          <div class="results" id="jobFormResults">
             <div class="result-card">
               <h3>✅ Form Filled Successfully!</h3>
               <div id="filledFormDisplay"></div>
@@ -1900,6 +1906,18 @@
                         `;
           });
 
+          // Add Submit Button
+          filledHtml += `
+            <div style="margin-top: 20px; text-align: center; padding-top: 20px; border-top: 1px solid #eee;">
+                <button class="btn" onclick="submitJobForm()" style="background: #28a745; font-size: 1.1em; padding: 12px 24px;">
+                    🚀 Submit Application
+                </button>
+                <button class="btn" onclick="editJobForm()" style="background: #ffc107; margin-left: 10px; color: #000;">
+                    ✏️ Edit Answers
+                </button>
+            </div>
+          `;
+
           filledDiv.innerHTML = filledHtml;
           document.getElementById("jobFormResults").classList.add("show");
 
@@ -2152,6 +2170,18 @@
                             </div>
                         `;
           }
+
+          // Add Submit Button
+          filledHtml += `
+            <div style="margin-top: 20px; text-align: center; padding-top: 20px; border-top: 1px solid #eee;">
+                <button class="btn" onclick="submitJobForm()" style="background: #28a745; font-size: 1.1em; padding: 12px 24px;">
+                    🚀 Submit Application
+                </button>
+                <button class="btn" onclick="editJobForm()" style="background: #ffc107; margin-left: 10px; color: #000;">
+                    ✏️ Edit Answers
+                </button>
+            </div>
+          `;
 
           filledDiv.innerHTML = filledHtml;
           document.getElementById("jobFormResults").classList.add("show");

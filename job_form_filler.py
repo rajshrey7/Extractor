@@ -463,10 +463,22 @@ class JobFormFiller:
     
     def submit_filled_form(self, form_url: str, filled_data: Dict[str, str]) -> bool:
         """Submit filled form data"""
+        logger.info(f"Attempting to submit form: {form_url}")
+        logger.info(f"Filled data keys: {list(filled_data.keys())}")
+        
         if GoogleFormHandler is None:
-            return False
+            logger.error("GoogleFormHandler module is not available!")
+            raise Exception("Google Form Handler module not available. Please ensure Auto-Job-Form-Filler-Agent folder exists.")
         
-        if not self.form_handler or self.form_handler.url != form_url:
-            self.form_handler = GoogleFormHandler(url=form_url)
-        
-        return self.form_handler.submit_form(filled_data)
+        try:
+            if not self.form_handler or self.form_handler.url != form_url:
+                logger.info(f"Creating new GoogleFormHandler for {form_url}")
+                self.form_handler = GoogleFormHandler(url=form_url)
+            
+            logger.info("Calling submit_form...")
+            result = self.form_handler.submit_form(filled_data)
+            logger.info(f"submit_form returned: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Error submitting form: {str(e)}")
+            raise Exception(f"Form submission failed: {str(e)}")
