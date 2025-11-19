@@ -23,8 +23,8 @@ OPENROUTER_MODELS = {
 # Default model
 DEFAULT_MODEL = "gryphe/mythomax-l2-13b"
 
-# Google Vision API Key for document parsing and OCR
-GOOGLE_VISION_API_KEY = "AIzaSyCYEGFhiCBloCtcULbukuiSHr6cOndt-EE"
+# Google Vision API Key (Removed - using offline TrOCR)
+# GOOGLE_VISION_API_KEY = "REMOVED"
 
 # OpenAI API Key (deprecated - using Google Vision instead)
 OPENAI_API_KEY = None

@@ -20,8 +20,10 @@ import requests
 import quality_score
 from ocr_verifier import OCRVerifier
 from job_form_filler import JobFormFiller
-from config import OPENROUTER_API_KEY, LLAMA_CLOUD_API_KEY, DEFAULT_MODEL, OPENROUTER_MODELS, GOOGLE_VISION_API_KEY, SELECTED_LANGUAGE
+from config import OPENROUTER_API_KEY, LLAMA_CLOUD_API_KEY, DEFAULT_MODEL, OPENROUTER_MODELS, SELECTED_LANGUAGE
+from tesseract_ocr import TesseractOCR
 from language_support import LanguageLoader
+from ocr_comparison import compare_ocr_results
 
 # Import GoogleFormHandler only when needed (lazy import)
 # This prevents importing the Streamlit app.py from Auto-Job-Form-Filler-Agent
@@ -66,11 +68,12 @@ if os.path.exists("static"):
 MODEL_PATH = "Mymodel.pt"
 yolo_model = None
 ocr_reader = None
+tesseract_ocr = None
 language_loader = LanguageLoader(SELECTED_LANGUAGE)
 verifier = OCRVerifier(SELECTED_LANGUAGE)
 
 def initialize_models():
-    global yolo_model, ocr_reader
+    global yolo_model, ocr_reader, tesseract_ocr
     if yolo_model is None:
         if os.path.exists(MODEL_PATH):
             try:
@@ -93,6 +96,15 @@ def initialize_models():
         except Exception as e:
             print(f"❌ Error initializing EasyOCR: {e}")
             ocr_reader = None
+    
+    if tesseract_ocr is None:
+        try:
+            print("📦 Initializing Tesseract OCR...")
+            tesseract_ocr = TesseractOCR()
+            print("✅ Tesseract OCR initialized successfully!")
+        except Exception as e:
+            print(f"❌ Error initializing Tesseract: {e}")
+            tesseract_ocr = None
 
 # Initialize on startup
 @app.on_event("startup")
@@ -174,116 +186,33 @@ def detect_unknown_fields(text):
             detected[field] = text.split(':')[-1].strip() if ':' in text else text
     return detected
 
-def convert_image_to_json_with_google_vision(image_bytes: bytes) -> Dict:
+def extract_text_with_tesseract(image_bytes: bytes) -> str:
     """
-    Convert image directly to JSON using Google Vision API with proper structured extraction
+    Extract raw text using Tesseract OCR.
+    Returns the raw extracted text as a string.
     """
     try:
-        import base64
-        import re
-        import io
+        if tesseract_ocr is None:
+            print("❌ Tesseract OCR not initialized")
+            return ""
+
+        print("🔍 Starting Tesseract OCR inference...")
+        extracted_text = tesseract_ocr.read_text(image_bytes)
         
-        # Encode image to base64
-        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-        
-        # Prepare the request to Google Vision API
-        url = f"https://vision.googleapis.com/v1/images:annotate?key={GOOGLE_VISION_API_KEY}"
-        
-        payload = {
-            "requests": [
-                {
-                    "image": {
-                        "content": image_base64
-                    },
-                    "features": [
-                        {
-                            "type": "DOCUMENT_TEXT_DETECTION",  # Better for structured documents
-                            "maxResults": 1
-                        }
-                    ],
-                    "imageContext": {
-                        "languageHints": language_loader.get_google_vision_lang()
-                    }
-                }
-            ]
-        }
-        
-        headers = {
-            "Content-Type": "application/json"
-        }
-        
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
-        
-        if response.status_code == 200:
-            result = response.json()
+        if not extracted_text:
+            print("No text detected by Tesseract")
+            return ""
             
-            # Extract text and structured data from Google Vision response
-            extracted_text = ""
-            blocks_data = []
+        print(f"✅ Tesseract extracted text ({len(extracted_text)} chars)")
+        
+        # Return raw text directly
+        return extracted_text
             
-            if "responses" in result and len(result["responses"]) > 0:
-                response_data = result["responses"][0]
-                
-                # Check for errors
-                if "error" in response_data:
-                    error_msg = response_data["error"].get("message", "Unknown error")
-                    print(f"Google Vision API error: {error_msg}")
-                    return {}
-                
-                # Get full text annotation (document text detection) - provides structured layout
-                if "fullTextAnnotation" in response_data:
-                    full_text_annotation = response_data["fullTextAnnotation"]
-                    extracted_text = full_text_annotation.get("text", "")
-                    
-                    # Extract structured blocks with bounding boxes and confidence
-                    if "pages" in full_text_annotation:
-                        for page in full_text_annotation["pages"]:
-                            if "blocks" in page:
-                                for block in page["blocks"]:
-                                    block_text = ""
-                                    if "paragraphs" in block:
-                                        for paragraph in block["paragraphs"]:
-                                            para_text = ""
-                                            if "words" in paragraph:
-                                                for word in paragraph["words"]:
-                                                    word_text = ""
-                                                    if "symbols" in word:
-                                                        word_text = "".join([symbol.get("text", "") for symbol in word["symbols"]])
-                                                    para_text += word_text + " "
-                                            block_text += para_text.strip() + " "
-                                    
-                                    if block_text.strip():
-                                        blocks_data.append({
-                                            "text": block_text.strip(),
-                                            "confidence": block.get("confidence", 0.0),
-                                            "block_type": block.get("blockType", "UNKNOWN")
-                                        })
-                
-                # Fallback to text annotations if fullTextAnnotation not available
-                elif "textAnnotations" in response_data and len(response_data["textAnnotations"]) > 0:
-                    extracted_text = response_data["textAnnotations"][0].get("description", "")
-            
-            if not extracted_text:
-                print("No text detected in image")
-                return {}
-            
-            # Parse extracted text into structured JSON using both raw text and blocks
-            structured_data = parse_text_to_json_advanced(extracted_text, blocks_data)
-            return structured_data
-        else:
-            error_text = response.text[:500] if hasattr(response, 'text') else str(response.status_code)
-            print(f"Google Vision API error {response.status_code}: {error_text}")
-            print(f"Full response: {response.text[:1000]}")
-            return {}
-            
-    except requests.exceptions.RequestException as e:
-        print(f"Google Vision API request error: {str(e)}")
-        return {}
     except Exception as e:
-        print(f"Google Vision image conversion error: {str(e)}")
+        print(f"Tesseract error: {str(e)}")
         import traceback
         traceback.print_exc()
-        return {}
+        return ""
 
 def parse_text_to_json_advanced(text: str, blocks_data: List[Dict] = None) -> Dict:
     """
@@ -724,27 +653,30 @@ def process_pdf(pdf_bytes: bytes, use_openai: bool = False) -> Dict:
             print(f"Processing page {page_num + 1}/{len(page_images)}")
             
             # Convert numpy array to bytes for processing
-            # For Google Vision API, we need RGB format, not BGR
+            _, img_encoded = cv2.imencode('.png', img_array)
+            img_bytes = img_encoded.tobytes()
+            
             if use_openai:
-                # Convert BGR to RGB for Google Vision API
-                if len(img_array.shape) == 3:
-                    img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
-                else:
-                    img_rgb = img_array
+                # Use COMBINED OCR: YOLO+EasyOCR + Tesseract
+                print(f"Using combined OCR for page {page_num + 1}")
                 
-                # Encode as PNG for Google Vision API
-                img_pil = Image.fromarray(img_rgb)
-                img_buffer = io.BytesIO()
-                img_pil.save(img_buffer, format='PNG')
-                img_bytes = img_buffer.getvalue()
-                
-                # Use Google Vision API for this page
-                page_result = convert_image_to_json_with_google_vision(img_bytes)
-                if page_result:
-                    all_extracted_fields.update(page_result)
+                # Run YOLO for structured fields
+                yolo_page_result = process_image(img_bytes)
+                if yolo_page_result.get('extracted_fields'):
+                    all_extracted_fields.update(yolo_page_result['extracted_fields'])
+                if yolo_page_result.get('general_text'):
+                    all_general_text.extend(yolo_page_result['general_text'])
+                if yolo_page_result.get('found_idcard'):
                     found_idcard = True
-                else:
-                    print(f"Warning: Google Vision API returned no results for page {page_num + 1}")
+                
+                # Run Tesseract for full text
+                try:
+                    tesseract_page_text = extract_text_with_tesseract(img_bytes)
+                    if tesseract_page_text:
+                        all_general_text.append(f"--- Page {page_num + 1} (Tesseract) ---")
+                        all_general_text.append(tesseract_page_text)
+                except Exception as e:
+                    print(f"⚠️ Tesseract error on page {page_num + 1}: {e}")
             else:
                 # For YOLO, keep BGR format
                 _, img_encoded = cv2.imencode('.png', img_array)
@@ -759,13 +691,14 @@ def process_pdf(pdf_bytes: bytes, use_openai: bool = False) -> Dict:
                 if page_result.get('found_idcard'):
                     found_idcard = True
         
+        
         return {
             "success": True,
             "extracted_fields": all_extracted_fields,
             "general_text": all_general_text,
             "found_idcard": found_idcard,
             "total_pages": len(page_images),
-            "method": "google_vision" if use_openai else "yolo_easyocr"
+            "method": "combined_yolo_tesseract" if use_openai else "yolo_easyocr"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
@@ -825,36 +758,43 @@ async def upload_image(
             sys.stdout.flush()
             return JSONResponse(content={"success": True, **result})
         
-        # Process image
+        # Process image with BOTH methods when Tesseract is enabled
         if use_openai_flag:
-            print("Using Google Vision API...")
+            print("Using COMBINED OCR: YOLO+EasyOCR + Tesseract...")
             sys.stdout.flush()
+            
+            # Run YOLO+EasyOCR for structured fields
+            yolo_result = process_image(contents)
+            
+            # Run Tesseract for full text
             try:
-                google_vision_result = convert_image_to_json_with_google_vision(contents)
-                if google_vision_result:
-                    print("Google Vision processing successful")
-                    print(f"Extracted {len(google_vision_result)} fields")
-                    sys.stdout.flush()
-                    return JSONResponse(content={
-                        "success": True,
-                        "filename": filename,
-                        "extracted_fields": google_vision_result,
-                        "general_text": [],
-                        "found_idcard": True,
-                        "google_vision_converted": True,
-                        "method": "google_vision",
-                        "file_type": "image",
-                        "quality": quality_report
-                    })
-                else:
-                    print("Google Vision returned empty result, falling back to YOLO...")
-                    sys.stdout.flush()
-            except Exception as gv_err:
-                print(f"Google Vision API error: {str(gv_err)}")
-                print("Falling back to YOLO...")
-                sys.stdout.flush()
-                import traceback
-                traceback.print_exc()
+                tesseract_text = extract_text_with_tesseract(contents)
+                print(f"✅ Tesseract extracted {len(tesseract_text)} chars")
+            except Exception as tesseract_err:
+                print(f"⚠️ Tesseract error: {str(tesseract_err)}")
+                tesseract_text = ""
+            
+            # Compare and select best result
+            best_result = compare_ocr_results(yolo_result, tesseract_text)
+            print(f"🏆 Best OCR method: {best_result.get('best_method', 'unknown')}")
+            print(f"   Comparison: YOLO score={best_result['comparison']['yolo_score']:.1f}, "
+                  f"Tesseract score={best_result['comparison']['tesseract_score']:.1f}")
+            
+            # Return best result with both options available
+            return JSONResponse(content={
+                "success": True,
+                "filename": filename,
+                "extracted_fields": best_result.get("extracted_fields", {}),
+                "general_text": best_result.get("general_text", []),
+                "tesseract_text": tesseract_text,  # Keep full Tesseract text
+                "found_idcard": best_result.get("found_idcard", False),
+                "tesseract_converted": True,
+                "method": "combined_auto_best",
+                "best_method": best_result.get("best_method"),
+                "comparison": best_result.get("comparison"),
+                "file_type": "image",
+                "quality": quality_report
+            })
         
         # Regular YOLO + EasyOCR processing
         print("Processing with YOLO+EasyOCR...")
@@ -945,22 +885,30 @@ async def camera_upload(
         print("Calculating image quality score...")
         quality_report = quality_score.get_quality_report(contents)
         print(f"Quality Report: {quality_report}")
-        
         # Process image
         use_openai_flag = use_openai and use_openai.lower() == 'true'
         
         if use_openai_flag:
-            print("Using Google Vision API...")
-            result = convert_image_to_json_with_google_vision(contents)
-            # Add general text field for compatibility
-            if result and "general_text" not in result:
-                result["general_text"] = []
+            print("Using COMBINED OCR: YOLO+EasyOCR + Tesseract...")
             
-            # Add metadata
-            result["google_vision_converted"] = True
-            result["extracted_fields"] = result.copy()
-            if "general_text" in result["extracted_fields"]:
-                del result["extracted_fields"]["general_text"]
+            # Run YOLO+EasyOCR for structured fields
+            yolo_result = process_image(contents)
+            
+            # Run Tesseract for full text
+            try:
+                tesseract_text = extract_text_with_tesseract(contents)
+                print(f"✅ Tesseract extracted {len(tesseract_text)} chars")
+            except Exception as tesseract_err:
+                print(f"⚠️ Tesseract error: {str(tesseract_err)}")
+                tesseract_text = ""
+            
+            result = {
+                "extracted_fields": yolo_result.get("extracted_fields", {}),  # From YOLO
+                "general_text": yolo_result.get("general_text", []),  # From YOLO  
+                "tesseract_text": tesseract_text,  # Full text from Tesseract
+                "found_idcard": yolo_result.get("found_idcard", False),
+                "tesseract_converted": True
+            }
         else:
             print("Using YOLO + EasyOCR...")
             result = process_image(contents)
