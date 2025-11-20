@@ -1140,8 +1140,18 @@ async def fill_form_with_ai(form_url: str, extracted_data: Dict[str, Any]):
     """Use AI-powered RAG workflow to fill form"""
     try:
         # Import RAG workflow
-        from rag_workflow_with_human_feedback import RAGWorkflowWithHumanFeedback
-        from llama_index.core.workflow import StartEvent, StopEvent, InputRequiredEvent
+        try:
+            from rag_workflow_with_human_feedback import RAGWorkflowWithHumanFeedback
+            from llama_index.core.workflow import StartEvent, StopEvent, InputRequiredEvent
+        except ImportError:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "success": False,
+                    "error": "AI features are not installed. Please install 'llama-index' and related packages to use this feature.",
+                    "install_command": "pip install llama-index llama-parse llama-index-llms-openrouter"
+                }
+            )
         
         # Create a temporary resume index from extracted data
         import tempfile
@@ -1275,8 +1285,19 @@ async def fill_job_form_ai(
         GoogleFormHandler = get_google_form_handler()
         if GoogleFormHandler is None:
             raise HTTPException(status_code=503, detail="Google Form Handler module not available. Please ensure Auto-Job-Form-Filler-Agent folder exists.")
-        from rag_workflow_with_human_feedback import RAGWorkflowWithHumanFeedback
-        from llama_index.core.workflow import StopEvent
+            
+        try:
+            from rag_workflow_with_human_feedback import RAGWorkflowWithHumanFeedback
+            from llama_index.core.workflow import StopEvent
+        except ImportError:
+             return JSONResponse(
+                status_code=503,
+                content={
+                    "success": False,
+                    "error": "AI features are not installed. Please install 'llama-index' and related packages to use this feature.",
+                    "install_command": "pip install llama-index llama-parse llama-index-llms-openrouter"
+                }
+            )
         
         # Get form data
         form_handler = GoogleFormHandler(url=form_url)

@@ -34,7 +34,7 @@ try:
 except ImportError as e:
     print(f"\n❌ Import Error: {e}")
     print("\nPlease install dependencies:")
-    print("  pip install -r requirements_web.txt")
+    print("  pip install -r requirements.txt")
     sys.exit(1)
 except Exception as e:
     print(f"\n❌ Error starting server: {e}")
