@@ -1,6 +1,6 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import cv2
 import easyocr
@@ -24,6 +24,7 @@ from config import OPENROUTER_API_KEY, LLAMA_CLOUD_API_KEY, DEFAULT_MODEL, OPENR
 from tesseract_ocr import TesseractOCR
 from language_support import LanguageLoader
 from ocr_comparison import compare_ocr_results
+import ocr_confidence
 
 # Import GoogleFormHandler only when needed (lazy import)
 # This prevents importing the Streamlit app.py from Auto-Job-Form-Filler-Agent
@@ -63,6 +64,15 @@ app.add_middleware(
 # Mount static files
 if os.path.exists("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Mount uploads directory for serving uploaded images
+if not os.path.exists("uploads"):
+    os.makedirs("uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+# In-memory storage for uploaded images and region data (for streaming)
+uploaded_images = {}  # {image_id: image_bytes}
+region_data_cache = {}  # {image_id: [regions]}
 
 # Initialize models
 MODEL_PATH = "Mymodel.pt"
@@ -703,10 +713,219 @@ def process_pdf(pdf_bytes: bytes, use_openai: bool = False) -> Dict:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
 
+@app.get("/api/ocr_stream")
+async def ocr_stream(image_id: str = Query(...)):
+    """
+    Stream OCR results with confidence scores as Server-Sent Events (SSE).
+    Progressive updates for each detected region.
+    """
+    import asyncio
+    import time
+    
+    async def event_generator():
+        try:
+            # Retrieve uploaded image from cache
+            if image_id not in uploaded_images:
+                yield f"event: error\ndata: {{\"error\": \"Image not found. Upload image first.\"}}\n\n"
+                return
+            
+            image_bytes = uploaded_images[image_id]
+            
+            # Initialize models if needed
+            initialize_models()
+            
+            if yolo_model is None or ocr_reader is None:
+                yield f"event: error\ndata: {{\"error\": \"OCR models not loaded\"}}\n\n"
+                return
+            
+            # Decode image
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if img is None:
+                yield f"event: error\ndata: {{\"error\": \"Failed to decode image\"}}\n\n"
+                return
+            
+            # Run YOLO detection
+            results = yolo_model(img)[0]
+            boxes = results.boxes
+            
+            # Process each detected box and stream results
+            regions = []
+            region_idx = 0
+            
+            # Process class 1-15 (ID card fields) first, then class 0 (general text)
+            all_boxes = []
+            for box in boxes:
+                class_id = int(box.cls[0])
+                if class_id >= 1:  # ID card fields
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    all_boxes.append((class_id, x1, y1, x2, y2, 'field'))
+            
+            for box in boxes:
+                class_id = int(box.cls[0])
+                if class_id == 0:  # General text
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    all_boxes.append((class_id, x1, y1, x2, y2, 'general'))
+            
+            # Apply NMS to all boxes
+            raw_boxes = [(x1, y1, x2, y2) for (_, x1, y1, x2, y2, _) in all_boxes]
+            filtered_boxes_coords = non_max_suppression_area(raw_boxes) if raw_boxes else []
+            
+            # Filter all_boxes to keep only those in filtered set
+            filtered_boxes = []
+            for (class_id, x1, y1, x2, y2, box_type) in all_boxes:
+                if (x1, y1, x2, y2) in filtered_boxes_coords:
+                    filtered_boxes.append((class_id, x1, y1, x2, y2, box_type))
+            
+            # Process each filtered box
+            for (class_id, x1, y1, x2, y2, box_type) in filtered_boxes:
+                try:
+                    # Crop region
+                    crop = img[y1:y2, x1:x2]
+                    
+                    # Encode crop as bytes
+                    _, crop_encoded = cv2.imencode('.png', crop)
+                    crop_bytes = crop_encoded.tobytes()
+                    
+                    # Run OCR on crop
+                    ocr_result = ocr_reader.readtext(crop)
+                    
+                    # Extract text from OCR results
+                    text_parts = []
+                    ocr_confidences = []
+                    for detection in ocr_result:
+                        if len(detection) >= 2:
+                            text_parts.append(str(detection[1]))
+                            if len(detection) >= 3:
+                                ocr_confidences.append(float(detection[2]))
+                    
+                    text = " ".join(text_parts).strip()
+                    
+                    # Get average OCR confidence if available
+                    avg_ocr_conf = sum(ocr_confidences) / len(ocr_confidences) if ocr_confidences else 0.7
+                    
+                    # Compute confidence using ocr_confidence module
+                    confidence_data = ocr_confidence.get_region_confidence(
+                        ocr_result=(text, avg_ocr_conf) if text else "",
+                        crop_image_bytes=crop_bytes,
+                        ocr_method='easyocr'
+                    )
+                    
+                    # Create region data
+                    region_id = f"r{region_idx}"
+                    region = {
+                        "region_id": region_id,
+                        "box": [x1, y1, x2 - x1, y2 - y1],  # [x, y, w, h]
+                        "text": confidence_data['text'],
+                        "confidence": confidence_data['confidence'],
+                        "ocr_confidence": confidence_data['ocr_confidence'],
+                        "blur_score": confidence_data['blur_score'],
+                        "lighting_score": confidence_data['lighting_score'],
+                        "image_quality": confidence_data['image_quality'],
+                        "text_quality": confidence_data['text_quality'],
+                        "suggestions": confidence_data['suggestions']
+                    }
+                    
+                    regions.append(region)
+                    region_idx += 1
+                    
+                    # Stream this region
+                    region_json = json.dumps(region)
+                    yield f"event: region\ndata: {region_json}\n\n"
+                    
+                    # Small delay to simulate progressive rendering
+                    await asyncio.sleep(0.01)
+                    
+                except Exception as e:
+                    print(f"Error processing region: {e}")
+                    continue
+            
+            # Calculate document-level confidence
+            doc_confidence = ocr_confidence.compute_document_confidence(regions)
+            
+            # Cache regions for later correction
+            region_data_cache[image_id] = regions
+            
+            # Send final done event
+            done_data = {
+                "document_confidence": doc_confidence,
+                "total_regions": len(regions)
+            }
+            done_json = json.dumps(done_data)
+            yield f"event: done\ndata: {done_json}\n\n"
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            error_data = {"error": str(e)}
+            yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+@app.post("/api/region_correct")
+async def region_correct(
+    image_id: str = Form(...),
+    region_id: str = Form(...),
+    corrected_text: str = Form(...)
+):
+    """
+    Update a region's text after manual correction and recalculate confidence.
+    """
+    try:
+        # Get cached regions for this image
+        if image_id not in region_data_cache:
+            raise HTTPException(status_code=404, detail="Image regions not found. Please process image first.")
+        
+        regions = region_data_cache[image_id]
+        
+        # Find the region
+        region_found = False
+        for region in regions:
+            if region['region_id'] == region_id:
+                # Update text and set confidence to 1.0 (human-corrected)
+                region['text'] = corrected_text
+                region['confidence'] = 1.0
+                region['ocr_confidence'] = 1.0
+                region['text_quality'] = 1.0
+                # Keep image quality metrics as they were
+                region_found = True
+                break
+        
+        if not region_found:
+            raise HTTPException(status_code=404, detail=f"Region {region_id} not found")
+        
+        # Recalculate document confidence
+        doc_confidence = ocr_confidence.compute_document_confidence(regions)
+        
+        # Update cache
+        region_data_cache[image_id] = regions
+        
+        return JSONResponse(content={
+            "success": True,
+            "region_id": region_id,
+            "confidence": 1.0,
+            "document_confidence": doc_confidence
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/upload")
 async def upload_image(
     file: UploadFile = File(...),
-    use_openai: Optional[str] = Form(None)
+    use_openai: Optional[str] = Form(None),
+    stream: Optional[str] = Form(None)
 ):
     """Upload and process image or PDF for OCR"""
     import traceback
@@ -725,8 +944,32 @@ async def upload_image(
         contents = await file.read()
         filename = file.filename or "uploaded_file"
         
-        print(f"File: {filename}, Size: {len(contents)} bytes")
+        # Check if streaming mode is requested
+        stream_mode = stream and stream.lower() == 'true'
+        
+        print(f"File: {filename}, Size: {len(contents)} bytes, Stream: {stream_mode}")
         sys.stdout.flush()
+        
+        # If streaming mode, save image and return image_id
+        if stream_mode and not filename.lower().endswith('.pdf'):
+            import datetime
+            image_id = str(uuid.uuid4())
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            save_filename = f"{timestamp}_{image_id}.jpg"
+            filepath = os.path.join("uploads", save_filename)
+            
+            with open(filepath, "wb") as f:
+                f.write(contents)
+            
+            # Cache image bytes for streaming endpoint
+            uploaded_images[image_id] = contents
+            
+            return JSONResponse(content={
+                "success": True,
+                "image_id": image_id,
+                "image_path": f"/uploads/{save_filename}",
+                "stream_url": f"/api/ocr_stream?image_id={image_id}"
+            })
         
         # Check if it's a PDF
         is_pdf = filename.lower().endswith('.pdf')
@@ -852,7 +1095,8 @@ async def upload_image(
 @app.post("/api/camera_upload")
 async def camera_upload(
     image: UploadFile = File(...),
-    use_openai: Optional[str] = Form(None)
+    use_openai: Optional[str] = Form(None),
+    stream: Optional[str] = Form(None)
 ):
     """Handle camera captured image upload"""
     import sys
@@ -867,24 +1111,39 @@ async def camera_upload(
         # Create uploads directory if not exists
         os.makedirs("uploads", exist_ok=True)
         
+        # Check if streaming mode is requested
+        stream_mode = stream and stream.lower() == 'true'
+        
         # Generate filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"camera_{timestamp}.jpg"
+        image_id = str(uuid.uuid4()) if stream_mode else ""
+        filename = f"camera_{timestamp}_{image_id}.jpg" if stream_mode else f"camera_{timestamp}.jpg"
         filepath = os.path.join("uploads", filename)
         
         # Read content
         contents = await image.read()
         
-        # Save to file (optional, for debugging/logging)
+        # Save to file
         with open(filepath, "wb") as f:
             f.write(contents)
             
-        print(f"Saved camera image to {filepath}")
+        print(f"Saved camera image to {filepath}, Stream: {stream_mode}")
         
         # Calculate quality score
         print("Calculating image quality score...")
         quality_report = quality_score.get_quality_report(contents)
         print(f"Quality Report: {quality_report}")
+        
+        # If streaming mode, cache image and return image_id
+        if stream_mode:
+            uploaded_images[image_id] = contents
+            return JSONResponse(content={
+                "success": True,
+                "image_id": image_id,
+                "image_path": f"/uploads/{filename}",
+                "stream_url": f"/api/ocr_stream?image_id={image_id}",
+                "quality": quality_report
+            })
         # Process image
         use_openai_flag = use_openai and use_openai.lower() == 'true'
         
