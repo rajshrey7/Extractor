@@ -885,13 +885,18 @@ def process_pdf(pdf_bytes: bytes, use_openai: bool = False) -> Dict:
         raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
 
 @app.get("/api/ocr_stream")
-async def ocr_stream(image_id: str = Query(...)):
+async def ocr_stream(
+    image_id: str = Query(...),
+    use_openai: bool = Query(False),
+    use_trocr: bool = Query(False)
+):
     """
     Stream OCR results with confidence scores as Server-Sent Events (SSE).
     Progressive updates for each detected region.
     """
     import asyncio
     import time
+    import tempfile
     
     async def event_generator():
         try:
@@ -905,8 +910,25 @@ async def ocr_stream(image_id: str = Query(...)):
             # Initialize models if needed
             initialize_models()
             
-            if yolo_model is None or ocr_reader is None:
-                yield f"event: error\ndata: {{\"error\": \"OCR models not loaded\"}}\n\n"
+            global trocr_ocr, paddle_ocr
+            
+            # Initialize specific models if requested
+            if use_trocr and trocr_ocr is None:
+                try:
+                    print("Initializing TrOCR for streaming...")
+                    trocr_ocr = TrOCRWrapper()
+                except Exception as e:
+                    print(f"Failed to init TrOCR: {e}")
+            
+            if use_openai and paddle_ocr is None:
+                try:
+                    print("Initializing PaddleOCR for streaming...")
+                    paddle_ocr = PaddleOCRWrapper(lang=SELECTED_LANGUAGE if SELECTED_LANGUAGE in ['en', 'ch', 'fr', 'german', 'korean', 'japan'] else 'en')
+                except Exception as e:
+                    print(f"Failed to init PaddleOCR: {e}")
+
+            if yolo_model is None:
+                yield f"event: error\ndata: {{\"error\": \"YOLO model not loaded\"}}\n\n"
                 return
             
             # Decode image
@@ -959,28 +981,61 @@ async def ocr_stream(image_id: str = Query(...)):
                     _, crop_encoded = cv2.imencode('.png', crop)
                     crop_bytes = crop_encoded.tobytes()
                     
-                    # Run OCR on crop
-                    ocr_result = ocr_reader.readtext(crop)
+                    text = ""
+                    avg_ocr_conf = 0.0
+                    ocr_method_used = 'easyocr'
                     
-                    # Extract text from OCR results
-                    text_parts = []
-                    ocr_confidences = []
-                    for detection in ocr_result:
-                        if len(detection) >= 2:
-                            text_parts.append(str(detection[1]))
-                            if len(detection) >= 3:
-                                ocr_confidences.append(float(detection[2]))
-                    
-                    text = " ".join(text_parts).strip()
-                    
-                    # Get average OCR confidence if available
-                    avg_ocr_conf = sum(ocr_confidences) / len(ocr_confidences) if ocr_confidences else 0.7
+                    # Run OCR based on selection
+                    if use_trocr and trocr_ocr:
+                        try:
+                            text = trocr_ocr.extract_text_from_image(crop)
+                            avg_ocr_conf = 0.85 # TrOCR is usually reliable
+                            ocr_method_used = 'trocr'
+                        except Exception as e:
+                            print(f"TrOCR error on region: {e}")
+                            # Fallback
+                            pass
+                            
+                    if not text and use_openai and paddle_ocr:
+                        try:
+                            # Save crop to temp file for Paddle
+                            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
+                                cv2.imwrite(tf.name, crop)
+                                temp_path = tf.name
+                            
+                            text = paddle_ocr.extract_text(temp_path)
+                            avg_ocr_conf = 0.9 # Paddle high confidence
+                            ocr_method_used = 'paddle'
+                            
+                            try:
+                                os.remove(temp_path)
+                            except:
+                                pass
+                        except Exception as e:
+                            print(f"PaddleOCR error on region: {e}")
+                            pass
+
+                    if not text:
+                        # Default to EasyOCR
+                        if ocr_reader:
+                            ocr_result = ocr_reader.readtext(crop)
+                            text_parts = []
+                            ocr_confidences = []
+                            for detection in ocr_result:
+                                if len(detection) >= 2:
+                                    text_parts.append(str(detection[1]))
+                                    if len(detection) >= 3:
+                                        ocr_confidences.append(float(detection[2]))
+                            
+                            text = " ".join(text_parts).strip()
+                            avg_ocr_conf = sum(ocr_confidences) / len(ocr_confidences) if ocr_confidences else 0.7
+                            ocr_method_used = 'easyocr'
                     
                     # Compute confidence using ocr_confidence module
                     confidence_data = ocr_confidence.get_region_confidence(
                         ocr_result=(text, avg_ocr_conf) if text else "",
                         crop_image_bytes=crop_bytes,
-                        ocr_method='easyocr'
+                        ocr_method=ocr_method_used
                     )
                     
                     # Create region data
@@ -1239,11 +1294,21 @@ async def upload_image(
             # Cache image bytes for streaming endpoint
             uploaded_images[image_id] = contents
             
+            # Construct stream URL with flags
+            use_openai_flag = use_openai and use_openai.lower() == 'true'
+            use_trocr_flag = use_trocr and use_trocr.lower() == 'true'
+            
+            stream_query = f"?image_id={image_id}"
+            if use_openai_flag:
+                stream_query += "&use_openai=true"
+            if use_trocr_flag:
+                stream_query += "&use_trocr=true"
+            
             return JSONResponse(content={
                 "success": True,
                 "image_id": image_id,
                 "image_path": f"/uploads/{save_filename}",
-                "stream_url": f"/api/ocr_stream?image_id={image_id}"
+                "stream_url": f"/api/ocr_stream{stream_query}"
             })
         
         # Check if it's a PDF

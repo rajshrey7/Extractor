@@ -1906,14 +1906,31 @@
       const fieldsContainer = document.getElementById("correctionFields");
 
       // Build editable fields
-      let html = '<div style="display: grid; gap: 15px;">';
+      let html = '';
 
       if (Object.keys(pendingCorrectionData).length > 0) {
         for (const [key, value] of Object.entries(pendingCorrectionData)) {
           html += `
-            <div id="field_container_${key.replace(/\s/g, '_')}" style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 15px;">
+            <div id="field_container_${key.replace(/\s/g, '_')}" draggable="true" ondragstart="handleDragStart(event)" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragend="handleDragEnd(event)" style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 15px; transition: all 0.2s ease;">
+              <div style="display: flex; align-items: center; padding-bottom: 12px; cursor: move; padding-right: 5px;" title="Drag to reorder">
+                <span style="font-size: 24px; color: #aaa;">⋮⋮</span>
+              </div>
               <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 5px;">
-                <label style="font-weight: bold; color: #333;">${key}</label>
+                <input 
+                  type="text" 
+                  id="key_${key.replace(/\s/g, '_')}" 
+                  value="${key}"
+                  placeholder="Field Name"
+                  style="
+                    font-weight: bold; 
+                    color: #333;
+                    padding: 8px;
+                    border: 1px solid #ccc;
+                    border-radius: 4px;
+                    background: #f8f9fa;
+                    font-size: 14px;
+                  "
+                />
                 <input 
                   type="text" 
                   id="correct_${key.replace(/\s/g, '_')}" 
@@ -1952,7 +1969,7 @@
         html += '<p style="color: #666;">No structured fields found. You can add them manually in the Verify Data tab.</p>';
       }
 
-      html += '</div>';
+
       fieldsContainer.innerHTML = html;
 
       // Show modal
@@ -1970,7 +1987,7 @@
       const newFieldId = `new_field_${newFieldCounter++}`;
 
       const newFieldHtml = `
-        <div id="${newFieldId}" style="
+        <div id="${newFieldId}" draggable="true" ondragstart="handleDragStart(event)" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragend="handleDragEnd(event)" style="
           display: grid;
           grid-template-columns: 1fr 1fr auto;
           gap: 10px;
@@ -1979,6 +1996,9 @@
           border-radius: 5px;
           align-items: center;
         ">
+          <div style="display: flex; align-items: center; padding-bottom: 12px; cursor: move; padding-right: 5px;" title="Drag to reorder">
+            <span style="font-size: 24px; color: #aaa;">⋮⋮</span>
+          </div>
           <div>
             <input 
               type="text" 
@@ -2037,33 +2057,86 @@
       }
     }
 
+
+    let dragSrcEl = null;
+
+    function handleDragStart(e) {
+      dragSrcEl = e.currentTarget;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/html', e.currentTarget.innerHTML);
+      e.currentTarget.style.opacity = '0.4';
+      e.currentTarget.classList.add('dragging');
+    }
+
+    function handleDragOver(e) {
+      if (e.preventDefault) {
+        e.preventDefault();
+      }
+      e.dataTransfer.dropEffect = 'move';
+      return false;
+    }
+
+    function handleDrop(e) {
+      if (e.stopPropagation) {
+        e.stopPropagation();
+      }
+
+      const dropTarget = e.currentTarget; // The container we dropped on
+
+      if (dragSrcEl !== dropTarget) {
+        // Swap the HTML content? No, swapping DOM nodes is better to preserve event listeners (like the delete button)
+        // But since we are using inline onclicks, swapping HTML might be okay, but swapping nodes is safer.
+
+        // Simple node swap logic
+        const container = dropTarget.parentNode;
+        const allItems = Array.from(container.children);
+        const srcIndex = allItems.indexOf(dragSrcEl);
+        const targetIndex = allItems.indexOf(dropTarget);
+
+        if (srcIndex < targetIndex) {
+          container.insertBefore(dragSrcEl, dropTarget.nextSibling);
+        } else {
+          container.insertBefore(dragSrcEl, dropTarget);
+        }
+      }
+      return false;
+    }
+
+    function handleDragEnd(e) {
+      e.currentTarget.style.opacity = '1';
+      e.currentTarget.classList.remove('dragging');
+    }
+
     function saveCorrections() {
       /**
        * Saves user corrections and proceeds with auto-fill
        */
       const correctedData = {};
+      const fieldsContainer = document.getElementById("correctionFields");
 
-      // Collect corrected values from existing fields
-      for (const key in pendingCorrectionData) {
-        const inputId = `correct_${key.replace(/\s/g, '_')}`;
-        const input = document.getElementById(inputId);
-        if (input) {
-          correctedData[key] = input.value;
+      // Iterate through all children of the container to respect order
+      for (const child of fieldsContainer.children) {
+        let keyInput, valueInput;
+
+        // Check if it's an existing field or a new field
+        if (child.id.startsWith("field_container_")) {
+          // Existing field
+          keyInput = child.querySelector('input[id^="key_"]');
+          valueInput = child.querySelector('input[id^="correct_"]');
+        } else if (child.id.startsWith("new_field_")) {
+          // New field
+          keyInput = child.querySelector('input[id$="_key"]');
+          valueInput = child.querySelector('input[id$="_value"]');
         }
-      }
 
-      // Collect new fields added by user
-      const newFields = document.querySelectorAll('[id^="new_field_"]');
-      newFields.forEach(fieldDiv => {
-        if (!fieldDiv.id.includes('_key') && !fieldDiv.id.includes('_value')) {
-          const keyInput = document.getElementById(`${fieldDiv.id}_key`);
-          const valueInput = document.getElementById(`${fieldDiv.id}_value`);
-
-          if (keyInput && valueInput && keyInput.value.trim() && valueInput.value.trim()) {
-            correctedData[keyInput.value.trim()] = valueInput.value.trim();
+        if (keyInput && valueInput) {
+          const key = keyInput.value.trim();
+          const value = valueInput.value.trim();
+          if (key) {
+            correctedData[key] = value;
           }
         }
-      });
+      }
 
       // Close modal
       document.getElementById("correctionModal").style.display = "none";
@@ -3174,121 +3247,132 @@
       document.getElementById(id).classList.remove("show");
     }
   </script>
+<script src="/static/js/camera.js"></script>
 
-  <script src="/static/js/camera.js"></script>
-
-  <!-- Confidence Overlay Module -->
-  <script src="/static/js/confidence_overlay.js"></script>
-  <script>
+<!-- Confidence Overlay Module -->
+<script src="/static/js/confidence_overlay.js"></script>
+<script>
     // Global confidence overlay instance
     let confidenceOverlay = null;
     let currentImageId = null;
 
     // Initialize confidence overlay
     function initConfidenceOverlay() {
-      const imageElement = document.getElementById('previewImg');
-      const canvasElement = document.getElementById('confidenceCanvas');
+        const imageElement = document.getElementById('previewImg');
+        const canvasElement = document.getElementById('confidenceCanvas');
 
-      if (imageElement && canvasElement) {
-        confidenceOverlay = new ConfidenceOverlay(imageElement, canvasElement);
+        if (imageElement && canvasElement) {
+            confidenceOverlay = new ConfidenceOverlay(imageElement, canvasElement);
 
-        // Listen for region correction events
-        window.addEventListener('regionCorrection', (event) => {
-          const { region_id, text } = event.detail;
-          console.log('Region correction requested:', region_id, text);
-        });
-      }
+            // Listen for region correction events
+            window.addEventListener('regionCorrection', (event) => {
+                const { region_id, text } = event.detail;
+                console.log('Region correction requested:', region_id, text);
+            });
+        }
     }
 
     // Toggle confidence overlay visibility
     function toggleConfidenceOverlay(enabled) {
-      if (confidenceOverlay) {
-        confidenceOverlay.toggle(enabled);
-      }
-      const canvas = document.getElementById('confidenceCanvas');
-      if (canvas) {
-        canvas.style.display = enabled ? 'block' : 'none';
-      }
+        if (confidenceOverlay) {
+            confidenceOverlay.toggle(enabled);
+        }
+        const canvas = document.getElementById('confidenceCanvas');
+        if (canvas) {
+            canvas.style.display = enabled ? 'block' : 'none';
+        }
     }
 
     // Process image with streaming
     async function processImageWithStreaming() {
-      const fileInput = document.getElementById('fileInput');
-      const file = fileInput.files[0];
+        const fileInput = document.getElementById('fileInput');
+        const file = fileInput.files[0];
 
-      if (!file) {
-        alert('Please select a file first');
-        return;
-      }
-
-      document.getElementById('loading').classList.add('show');
-
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('stream', 'true');
-
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
-        });
-
-        const data = await response.json();
-
-        if (data.success && data.image_id) {
-          currentImageId = data.image_id;
-
-          const previewImg = document.getElementById('previewImg');
-          previewImg.src = data.image_path;
-          previewImg.onload = () => {
-            document.getElementById('imagePreview').style.display = 'block';
-            document.getElementById('overlayControls').style.display = 'flex';
-            document.getElementById('confidenceLegend').style.display = 'flex';
-            document.getElementById('docConfidence').style.display = 'block';
-            document.getElementById('confidenceCanvas').style.display = 'block';
-
-            if (!confidenceOverlay) {
-              initConfidenceOverlay();
-            } else {
-              confidenceOverlay.clear();
-              confidenceOverlay.updateCanvasSize();
-            }
-
-            confidenceOverlay.connectSSE(data.image_id);
-          };
+        if (!file) {
+            alert('Please select a file first');
+            return;
         }
-      } catch (error) {
-        console.error('Error:', error);
-        showAlert('alert', 'Error processing image: ' + error.message, 'error');
-      } finally {
-        document.getElementById('loading').classList.remove('show');
-      }
+
+        document.getElementById('loading').classList.add('show');
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('stream', 'true');
+
+            const useOpenAI = document.getElementById("useOpenAI");
+            formData.append(
+                "use_openai",
+                useOpenAI && useOpenAI.checked ? "true" : "false"
+            );
+
+            const useTrOCR = document.getElementById("useTrOCR");
+            formData.append(
+                "use_trocr",
+                useTrOCR && useTrOCR.checked ? "true" : "false"
+            );
+
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.image_id) {
+                currentImageId = data.image_id;
+
+                const previewImg = document.getElementById('previewImg');
+                previewImg.src = data.image_path;
+                previewImg.onload = () => {
+                    document.getElementById('imagePreview').style.display = 'block';
+                    document.getElementById('overlayControls').style.display = 'flex';
+                    document.getElementById('confidenceLegend').style.display = 'flex';
+                    document.getElementById('docConfidence').style.display = 'block';
+                    document.getElementById('confidenceCanvas').style.display = 'block';
+
+                    if (!confidenceOverlay) {
+                        initConfidenceOverlay();
+                    } else {
+                        confidenceOverlay.clear();
+                        confidenceOverlay.updateCanvasSize();
+                    }
+
+                    confidenceOverlay.connectSSE(data.image_id);
+                };
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showAlert('alert', 'Error processing image: ' + error.message, 'error');
+        } finally {
+            document.getElementById('loading').classList.remove('show');
+        }
     }
 
     // Add streaming toggle on page load
     document.addEventListener('DOMContentLoaded', () => {
-      const useOpenAICheckbox = document.getElementById('useOpenAI');
-      if (useOpenAICheckbox && useOpenAICheckbox.parentElement) {
-        const streamingLabel = document.createElement('label');
-        streamingLabel.style.cssText = 'display: inline-flex; align-items: center; cursor: pointer; margin-left: 20px;';
-        streamingLabel.innerHTML = `
+        const useOpenAICheckbox = document.getElementById('useOpenAI');
+        if (useOpenAICheckbox && useOpenAICheckbox.parentElement) {
+            const streamingLabel = document.createElement('label');
+            streamingLabel.style.cssText = 'display: inline-flex; align-items: center; cursor: pointer; margin-left: 20px;';
+            streamingLabel.innerHTML = `
           <input type="checkbox" id="useStreaming" style="margin-right: 8px; width: 18px; height: 18px" />
           <span>🔄 Show Live Confidence Zones</span>
         `;
-        useOpenAICheckbox.parentElement.parentElement.appendChild(streamingLabel);
+            useOpenAICheckbox.parentElement.parentElement.appendChild(streamingLabel);
 
-        const oldProcessImage = window.processImage;
-        window.processImage = async function () {
-          const useStreaming = document.getElementById('useStreaming')?.checked || false;
-          if (useStreaming) {
-            await processImageWithStreaming();
-          } else if (oldProcessImage) {
-            await oldProcessImage();
-          }
-        };
-      }
+            const oldProcessImage = window.processImage;
+            window.processImage = async function () {
+                const useStreaming = document.getElementById('useStreaming')?.checked || false;
+                if (useStreaming) {
+                    await processImageWithStreaming();
+                } else if (oldProcessImage) {
+                    await oldProcessImage();
+                }
+            };
+        }
     });
-  </script>
+</script>
 </body>
 
 </html>
