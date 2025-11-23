@@ -22,6 +22,7 @@ from ocr_verifier import OCRVerifier
 from job_form_filler import JobFormFiller
 from config import OPENROUTER_API_KEY, LLAMA_CLOUD_API_KEY, DEFAULT_MODEL, OPENROUTER_MODELS, SELECTED_LANGUAGE
 from paddle_ocr_module import PaddleOCRWrapper
+from trocr_handwritten import TrOCRWrapper
 from language_support import LanguageLoader
 from ocr_comparison import compare_ocr_results
 import ocr_confidence
@@ -79,11 +80,12 @@ MODEL_PATH = "Mymodel.pt"
 yolo_model = None
 ocr_reader = None
 paddle_ocr = None
+trocr_ocr = None
 language_loader = LanguageLoader(SELECTED_LANGUAGE)
 verifier = OCRVerifier(SELECTED_LANGUAGE)
 
 def initialize_models():
-    global yolo_model, ocr_reader, paddle_ocr
+    global yolo_model, ocr_reader, paddle_ocr, trocr_ocr
     if yolo_model is None:
         if os.path.exists(MODEL_PATH):
             try:
@@ -115,6 +117,8 @@ def initialize_models():
         except Exception as e:
             print(f"❌ Error initializing PaddleOCR: {e}")
             paddle_ocr = None
+    
+    # Note: TrOCR is initialized on-demand due to large model size
 
 # Initialize on startup
 @app.on_event("startup")
@@ -250,6 +254,143 @@ def extract_text_with_paddle(image_bytes: bytes) -> str:
             
     except Exception as e:
         print(f"PaddleOCR error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return ""
+
+def extract_text_with_trocr(image_bytes: bytes) -> str:
+    """
+    Hybrid extraction: Use PaddleOCR for detection (boxes) and TrOCR for recognition (text).
+    This is much more accurate for full pages than passing the whole image to TrOCR.
+    """
+    global trocr_ocr, paddle_ocr
+    try:
+        # Initialize TrOCR
+        if trocr_ocr is None:
+            print("📦 Initializing TrOCR (this may take a moment on first run)...")
+            try:
+                trocr_ocr = TrOCRWrapper()
+                print("✅ TrOCR initialized successfully!")
+            except Exception as e:
+                print(f"❌ Error initializing TrOCR: {e}")
+                return ""
+        
+        # Initialize PaddleOCR if needed (for detection)
+        if paddle_ocr is None:
+            print("📦 Initializing PaddleOCR for detection...")
+            try:
+                paddle_ocr = PaddleOCRWrapper(lang='en')
+                print("✅ PaddleOCR initialized successfully!")
+            except Exception as e:
+                print(f"❌ Error initializing PaddleOCR: {e}")
+                return ""
+
+        print("🔍 Starting Hybrid TrOCR inference (Paddle Detection + TrOCR Recognition)...")
+        
+        # Decode image
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        # 1. Detect text regions using PaddleOCR
+        # We use the wrapper's extract_data method which handles the API details
+        # It returns [{'text':..., 'confidence':..., 'box':...}]
+        print("  Calling PaddleOCR for detection...")
+        paddle_results = paddle_ocr.extract_data(img)
+        
+        if not paddle_results:
+            print("⚠️ No text regions detected by PaddleOCR")
+            return ""
+            
+        # Extract just the boxes
+        boxes = [item['box'] for item in paddle_results]
+        print(f"✅ Detected {len(boxes)} text regions")
+        
+        # 2. Group boxes into lines
+        # Simple sorting isn't enough. We need to group boxes that are on the same line.
+        # Algorithm:
+        # 1. Sort by Y-coordinate
+        # 2. Iterate and group boxes that have significant Y-overlap
+        
+        # Sort by top-left Y first
+        boxes.sort(key=lambda b: b[0][1])
+        
+        lines = []
+        current_line = []
+        
+        for box in boxes:
+            if not current_line:
+                current_line.append(box)
+                continue
+            
+            # Check if this box belongs to the current line
+            # We compare the Y-center of this box with the Y-center of the first box in the line
+            box_y_center = (box[0][1] + box[2][1]) / 2
+            line_y_center = (current_line[0][0][1] + current_line[0][2][1]) / 2
+            
+            # If Y-centers are close (within 20px), it's the same line
+            if abs(box_y_center - line_y_center) < 20:
+                current_line.append(box)
+            else:
+                # New line started
+                lines.append(current_line)
+                current_line = [box]
+        
+        if current_line:
+            lines.append(current_line)
+            
+        print(f"✅ Grouped into {len(lines)} text lines")
+        
+        # 3. Process each line
+        full_text = []
+        
+        for line_idx, line_boxes in enumerate(lines):
+            # Sort boxes in this line by X-coordinate
+            line_boxes.sort(key=lambda b: b[0][0])
+            
+            # Determine the bounding box of the entire line
+            min_x = min(b[0][0] for b in line_boxes)
+            min_y = min(b[0][1] for b in line_boxes)
+            max_x = max(b[2][0] for b in line_boxes)
+            max_y = max(b[2][1] for b in line_boxes)
+            
+            # Add padding (increased to 15px to capture full ascenders/descenders)
+            h, w = img.shape[:2]
+            pad = 15
+            x1 = int(max(0, min_x - pad))
+            y1 = int(max(0, min_y - pad))
+            x2 = int(min(w, max_x + pad))
+            y2 = int(min(h, max_y + pad))
+            
+            # Crop the full line
+            crop = img[y1:y2, x1:x2]
+            
+            # Preprocessing: Use CLAHE (Contrast Limited Adaptive Histogram Equalization)
+            # This enhances contrast without destroying details like aggressive binarization
+            try:
+                gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+                enhanced = clahe.apply(gray)
+                # Denoise slightly
+                denoised = cv2.fastNlMeansDenoising(enhanced, None, 10, 7, 21)
+                crop_rgb = cv2.cvtColor(denoised, cv2.COLOR_GRAY2RGB)
+            except Exception:
+                # Fallback
+                crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+                
+            pil_crop = Image.fromarray(crop_rgb)
+            
+            # Recognize
+            text = trocr_ocr.extract_text_from_image(pil_crop)
+            if text and len(text.strip()) > 0:
+                full_text.append(text)
+                print(f"  Line {line_idx+1}: {text}")
+        
+        final_text = "\n".join(full_text)
+        print(f"✅ TrOCR extracted {len(final_text)} chars from {len(full_text)} lines")
+        return final_text
+            
+    except Exception as e:
+        print(f"TrOCR error: {str(e)}")
         import traceback
         traceback.print_exc()
         return ""
@@ -950,12 +1091,116 @@ async def region_correct(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def parse_text_to_json_advanced(text: str, blocks_data: List[Dict] = None) -> Dict:
+    """
+    Advanced parsing of extracted text into structured JSON format
+    Uses both pattern matching and block-based extraction with fuzzy matching
+    """
+    import difflib
+    
+    result = {}
+    lines = text.split('\n')
+    
+    # Enhanced field patterns with better matching
+    patterns = language_loader.get_regex_patterns()
+    
+    # Standard fields we expect
+    # ORDER MATTERS! Put specific keys before general ones to prevent partial match overwrites
+    STANDARD_FIELDS = {
+        'Address Line 1': ['address line 1', 'address line 1', 'road', 'street', 'address line !'],
+        'Address Line 2': ['address line 2', 'address line 2', 'area', 'layout'],
+        'Address': ['address', 'address line', 'residence'],
+        'First Name': ['first name', 'given name', 'forename'],
+        'Middle Name': ['middle name', 'midde name', 'second name'],
+        'Last Name': ['last name', 'surname', 'family name', 'is a man'], 
+        'Gender': ['gender', 'sex', 'brender', 'cender'], # 'cender' is a common typo
+        'Date of Birth': ['date of birth', 'dob', 'birth date'],
+        'City': ['city', 'town', 'district'],
+        'State': ['state', 'province', 'stale'], 
+        'Pin Code': ['pin code', 'pincode', 'zip code', 'postal code', 'pincade'],
+        'Phone No': ['phone', 'mobile', 'contact', 'cell', 'phone member', 'phone number'],
+        'Email': ['email', 'e-mail', 'mail', 'email id']
+    }
+    
+    # Helper to find closest standard key
+    def get_standard_key(ocr_key):
+        ocr_key = ocr_key.lower().strip()
+        
+        best_match = None
+        max_len = 0
+        
+        # Direct check with "best match" logic (longest matching variation wins)
+        for std_key, variations in STANDARD_FIELDS.items():
+            if ocr_key in variations:
+                return std_key
+            for var in variations:
+                if var in ocr_key:
+                    # Found a substring match.
+                    # If we already have a match, check if this one is "better" (longer specific match)
+                    # e.g. "address line 1" (len 14) is better than "address" (len 7) for input "address line 1"
+                    if len(var) > max_len:
+                        max_len = len(var)
+                        best_match = std_key
+        
+        if best_match:
+            return best_match
+        
+        # Fuzzy check
+        all_variations = []
+        for variations in STANDARD_FIELDS.values():
+            all_variations.extend(variations)
+            
+        matches = difflib.get_close_matches(ocr_key, all_variations, n=1, cutoff=0.7)
+        if matches:
+            match = matches[0]
+            for std_key, variations in STANDARD_FIELDS.items():
+                if match in variations:
+                    return std_key
+        return None
+
+    # Line-by-line extraction with fuzzy key matching
+    for line in lines:
+        if ':' in line:
+            parts = line.split(':', 1)
+            if len(parts) == 2:
+                key_raw = parts[0].strip()
+                value = parts[1].strip()
+                
+                # Clean value
+                # Remove quotes and trailing punctuation
+                value = value.replace('"', '').replace("'", "").strip(" .,!")
+                
+                # Fix common OCR typos in values
+                val_lower = value.lower()
+                
+                # Email fixes
+                if 'gmail' in val_lower or 'yahoo' in val_lower or 'hotmail' in val_lower or 'gymail' in val_lower or 'great-com' in val_lower:
+                    value = value.replace('Gymail', 'gmail').replace('gymail', 'gmail')
+                    value = value.replace('great-com', 'gmail.com') 
+                    value = value.replace('-com', '.com').replace(' com', '.com')
+                    value = value.replace(' ', '') 
+                    if '@' not in value and 'gmail' in value:
+                        value = value.replace('gmail', '@gmail')
+                
+                # Find standard key
+                std_key = get_standard_key(key_raw)
+                
+                if std_key:
+                    result[std_key] = value
+                else:
+                    # Keep original key if no match found, but clean it
+                    clean_key = key_raw.title().replace('_', ' ')
+                    result[clean_key] = value
+
+    return result
+
 
 @app.post("/api/upload")
 async def upload_image(
     file: UploadFile = File(...),
     use_openai: Optional[str] = Form(None),
-    stream: Optional[str] = Form(None)
+    stream: Optional[str] = Form(None),
+    use_trocr: Optional[str] = Form(None)
 ):
     """Upload and process image or PDF for OCR"""
     import traceback
@@ -1004,8 +1249,9 @@ async def upload_image(
         # Check if it's a PDF
         is_pdf = filename.lower().endswith('.pdf')
         use_openai_flag = use_openai and use_openai.lower() == 'true'
+        use_trocr_flag = use_trocr and use_trocr.lower() == 'true'
         
-        print(f"Is PDF: {is_pdf}, Use OpenAI: {use_openai_flag}")
+        print(f"Is PDF: {is_pdf}, Use OpenAI: {use_openai_flag}, Use TrOCR: {use_trocr_flag}")
         sys.stdout.flush()
         
         # Calculate quality score for images
@@ -1031,7 +1277,44 @@ async def upload_image(
             sys.stdout.flush()
             return JSONResponse(content={"success": True, **result})
         
-        # Process image with BOTH methods when PaddleOCR is enabled
+        # Process image with TrOCR for handwritten documents
+        if use_trocr_flag:
+            print("Using TrOCR for HANDWRITTEN text...")
+            sys.stdout.flush()
+            
+            # Run TrOCR for handwritten text
+            try:
+                trocr_text = extract_text_with_trocr(contents)
+                print(f"✅ TrOCR extracted {len(trocr_text)} chars")
+                
+                # Parse the extracted text into structured fields
+                parsed_fields = parse_text_to_json_advanced(trocr_text)
+                
+                # Return TrOCR results
+                return JSONResponse(content={
+                    "success": True,
+                    "filename": filename,
+                    "extracted_fields": parsed_fields,
+                    "general_text": [trocr_text],
+                    "trocr_text": trocr_text,
+                    "found_idcard": len(parsed_fields) > 0,
+                    "method": "trocr_handwritten",
+                    "file_type": "image",
+                    "quality": quality_report
+                })
+            except Exception as trocr_err:
+                print(f"⚠️ TrOCR error: {str(trocr_err)}")
+                import traceback
+                traceback.print_exc()
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "success": False,
+                        "error": f"TrOCR processing failed: {str(trocr_err)}"
+                    }
+                )
+        
+        # Process image with BOTH methods when PaddleOCR is enabled  
         if use_openai_flag:
             print("Using COMBINED OCR: YOLO+EasyOCR + PaddleOCR...")
             sys.stdout.flush()

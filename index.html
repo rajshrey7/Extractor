@@ -587,13 +587,13 @@
 
         <div style="text-align: center; margin-top: 20px">
           <div style="margin-bottom: 10px">
-            <label style="
-                  display: inline-flex;
-                  align-items: center;
-                  cursor: pointer;
-                ">
+            <label style="display: inline-flex; align-items: center; cursor: pointer; margin-right: 20px;">
               <input type="checkbox" id="useOpenAI" style="margin-right: 8px; width: 18px; height: 18px" />
               <span>🤖 Use PaddleOCR (Offline)</span>
+            </label>
+            <label style="display: inline-flex; align-items: center; cursor: pointer;">
+              <input type="checkbox" id="useTrOCR" style="margin-right: 8px; width: 18px; height: 18px" />
+              <span>✍️ Handwritten Document (TrOCR)</span>
             </label>
           </div>
           <button class="btn" id="processBtn" onclick="processImage()" disabled>
@@ -602,8 +602,8 @@
           <br />
           <small style="color: #666; margin-top: 10px; display: block">
             <strong>PaddleOCR:</strong> Uses PaddleOCR engine for offline text extraction.<br />
-            <strong>YOLO+EasyOCR:</strong> Uses your trained YOLO model for
-            field detection (default).
+            <strong>TrOCR:</strong> Optimized for handwritten text recognition.<br />
+            <strong>YOLO+EasyOCR:</strong> Uses your trained YOLO model for field detection (default).
           </small>
         </div>
 
@@ -2111,6 +2111,7 @@
       }
     }
 
+
     function skipCorrection() {
       /**
        * Skips correction and uses original data
@@ -2123,6 +2124,7 @@
       autoFillVerifyData(pendingCorrectionData, pendingRawText);
       highlightTab('verify');
     }
+
 
     async function processImage() {
       const fileInput = document.getElementById("fileInput");
@@ -2138,10 +2140,13 @@
       const formData = new FormData();
       formData.append("file", fileInput.files[0]);
       const useOpenAI = document.getElementById("useOpenAI");
+      const useTrOCR = document.getElementById('useTrOCR')?.checked || false;
       formData.append(
         "use_openai",
         useOpenAI && useOpenAI.checked ? "true" : "false"
+
       );
+      formData.append('use_trocr', useTrOCR ? 'true' : 'false');
 
       document.getElementById("loading").classList.add("show");
       document.getElementById("results").classList.remove("show");
