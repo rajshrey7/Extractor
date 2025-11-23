@@ -6,7 +6,7 @@ A comprehensive, multilingual web application for extracting text from scanned d
 
 This system provides an end-to-end OCR solution with advanced features:
 
-- **Multi-Method OCR**: Extract text using YOLOv8 + EasyOCR, Tesseract OCR, or combined methods with automatic best-result selection
+- **Multi-Method OCR**: Extract text using YOLOv8 + EasyOCR, PaddleOCR, or combined methods with automatic best-result selection
 - **Multi-Page Document Support**: Process complex PDF documents with multiple pages
 - **Image Quality Assessment**: Real-time blur detection and lighting analysis with actionable feedback
 - **Manual OCR Correction**: Interactive review and correction interface for extracted data
@@ -22,7 +22,7 @@ This system provides an end-to-end OCR solution with advanced features:
 
 - **Three OCR Engines**:
   - YOLOv8 object detection + EasyOCR for structured field extraction
-  - Tesseract OCR for offline, full-text extraction
+  - PaddleOCR for offline, full-text extraction
   - Automatic comparison and best-result selection
 - **Multi-Page PDF Processing**: Extract and consolidate data from complex documents
 - **Real-Time Camera Capture**: Scan documents directly using device camera
@@ -75,7 +75,7 @@ This system provides an end-to-end OCR solution with advanced features:
 
 - **Python 3.8 or higher**
 - **Pre-trained YOLOv8 model** (`Mymodel.pt`) - Place in the root directory
-- **Tesseract OCR** (optional, for offline OCR)
+- **PaddleOCR** (optional, for offline OCR)
 - Web browser (Chrome, Firefox, Edge, Safari)
 
 ### Installation
@@ -157,7 +157,7 @@ The application will be available at: **http://localhost:8000**
    - Drag and drop the file, or
    - Click to browse and select
    - Supports: JPG, PNG, JPEG, PDF
-4. (Optional) Check **"Use Tesseract OCR"** for offline extraction
+4. (Optional) Check **"Use PaddleOCR"** for offline extraction
 5. Click **"Process Image"**
 6. Review the **Image Quality Report** (blur, lighting)
 7. Review and correct extracted data in the **OCR Correction Modal**
@@ -223,7 +223,7 @@ Upload and process an image or PDF for OCR extraction.
 
 **Request:**
 - `file`: Image or PDF file (multipart/form-data)
-- `use_openai`: `"true"` to use Tesseract OCR and enable comparison (optional)
+- `use_openai`: `"true"` to use PaddleOCR and enable comparison (optional)
 
 **Response:**
 ```json
@@ -236,15 +236,15 @@ Upload and process an image or PDF for OCR extraction.
     "Passport No": "AB123456"
   },
   "general_text": ["Additional text lines..."],
-  "tesseract_text": "Full raw text from Tesseract...",
+  "paddle_text": "Full raw text from PaddleOCR...",
   "found_idcard": true,
   "file_type": "pdf",
   "method": "combined_auto_best",
-  "best_method": "tesseract",
+  "best_method": "paddle",
   "comparison": {
     "yolo_score": 85.2,
-    "tesseract_score": 92.1,
-    "winner": "tesseract"
+    "paddle_score": 92.1,
+    "winner": "paddle"
   },
   "quality": {
     "blur_score": 158.32,
@@ -367,7 +367,7 @@ extractor/
 ├── language_support.py             # Multilingual support (EN/AR)
 ├── quality_score.py                # Image quality assessment
 ├── ocr_comparison.py               # OCR method comparison
-├── tesseract_ocr.py                # Tesseract OCR wrapper
+├── paddle_ocr_module.py          # PaddleOCR wrapper
 ├── run_server.py                   # Server startup script
 ├── requirements.txt                # Project dependencies
 ├── Mymodel.pt                      # YOLOv8 pre-trained model (required)
@@ -418,7 +418,7 @@ The system can extract and process the following fields from ID cards and docume
 - Localized UI elements and field names
 - Language-specific regex patterns for field extraction
 - Bidirectional text support (LTR/RTL)
-- Multilingual OCR with EasyOCR and Tesseract
+- Multilingual OCR with EasyOCR and PaddleOCR
 
 ### Switching Languages
 1. Use the language dropdown in the header
@@ -461,16 +461,16 @@ SELECTED_LANGUAGE = "en"
 - Best for ID cards, passports, and structured forms
 - Requires `Mymodel.pt`
 
-**Tesseract OCR**:
+**PaddleOCR**:
 - Full-text extraction, works offline
 - Best for unstructured documents and dense text
 - Automatically installed with requirements
 
 **Combined Method** (Recommended):
-- Runs both YOLO+EasyOCR and Tesseract
+- Runs both YOLO+EasyOCR and PaddleOCR
 - Automatically selects best result based on quality scoring
 - Provides comparison metrics
-- Enable by checking "Use Tesseract OCR" in the UI
+- Enable by checking "Use PaddleOCR" in the UI
 
 ## 🐛 Troubleshooting
 
@@ -491,7 +491,7 @@ SELECTED_LANGUAGE = "en"
 - Ensure EasyOCR models are downloaded (first run downloads automatically)
 - Check internet connection for initial model download
 - Verify image quality using the quality assessment feature
-- Try enabling Tesseract OCR for comparison
+- Try enabling PaddleOCR for comparison
 - Ensure the image is not rotated or heavily distorted
 
 ### Server Won't Start
@@ -599,7 +599,7 @@ To integrate additional OCR providers:
 
 ### Optional Dependencies
 
-- **Tesseract**: Offline OCR engine (highly recommended)
+- **PaddleOCR**: Offline OCR engine (highly recommended)
 - **pdf2image**: Alternative PDF processing
 - **Requests**: HTTP library for API calls
 
@@ -629,7 +629,7 @@ This project is provided as-is for educational and development purposes.
 
 - **YOLOv8** from Ultralytics for object detection
 - **EasyOCR** by JaidedAI for multi-language text recognition
-- **Tesseract OCR** by Google for offline OCR capabilities
+- **PaddleOCR** by PaddlePaddle for offline OCR capabilities
 - **FastAPI** for the modern, high-performance web framework
 - **PyMuPDF** for efficient PDF processing
 - **OpenCV** community for computer vision tools

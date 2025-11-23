@@ -21,7 +21,7 @@ import quality_score
 from ocr_verifier import OCRVerifier
 from job_form_filler import JobFormFiller
 from config import OPENROUTER_API_KEY, LLAMA_CLOUD_API_KEY, DEFAULT_MODEL, OPENROUTER_MODELS, SELECTED_LANGUAGE
-from tesseract_ocr import TesseractOCR
+from paddle_ocr_module import PaddleOCRWrapper
 from language_support import LanguageLoader
 from ocr_comparison import compare_ocr_results
 import ocr_confidence
@@ -78,12 +78,12 @@ region_data_cache = {}  # {image_id: [regions]}
 MODEL_PATH = "Mymodel.pt"
 yolo_model = None
 ocr_reader = None
-tesseract_ocr = None
+paddle_ocr = None
 language_loader = LanguageLoader(SELECTED_LANGUAGE)
 verifier = OCRVerifier(SELECTED_LANGUAGE)
 
 def initialize_models():
-    global yolo_model, ocr_reader, tesseract_ocr
+    global yolo_model, ocr_reader, paddle_ocr
     if yolo_model is None:
         if os.path.exists(MODEL_PATH):
             try:
@@ -107,14 +107,14 @@ def initialize_models():
             print(f"❌ Error initializing EasyOCR: {e}")
             ocr_reader = None
     
-    if tesseract_ocr is None:
+    if paddle_ocr is None:
         try:
-            print("📦 Initializing Tesseract OCR...")
-            tesseract_ocr = TesseractOCR()
-            print("✅ Tesseract OCR initialized successfully!")
+            print("📦 Initializing PaddleOCR...")
+            paddle_ocr = PaddleOCRWrapper(lang=SELECTED_LANGUAGE if SELECTED_LANGUAGE in ['en', 'ch', 'fr', 'german', 'korean', 'japan'] else 'en')
+            print("✅ PaddleOCR initialized successfully!")
         except Exception as e:
-            print(f"❌ Error initializing Tesseract: {e}")
-            tesseract_ocr = None
+            print(f"❌ Error initializing PaddleOCR: {e}")
+            paddle_ocr = None
 
 # Initialize on startup
 @app.on_event("startup")
@@ -196,30 +196,60 @@ def detect_unknown_fields(text):
             detected[field] = text.split(':')[-1].strip() if ':' in text else text
     return detected
 
-def extract_text_with_tesseract(image_bytes: bytes) -> str:
+def extract_text_with_paddle(image_bytes: bytes) -> str:
     """
-    Extract raw text using Tesseract OCR.
+    Extract raw text using PaddleOCR.
     Returns the raw extracted text as a string.
     """
     try:
-        if tesseract_ocr is None:
-            print("❌ Tesseract OCR not initialized")
+        if paddle_ocr is None:
+            print("❌ PaddleOCR not initialized")
             return ""
 
-        print("🔍 Starting Tesseract OCR inference...")
-        extracted_text = tesseract_ocr.read_text(image_bytes)
+        print("🔍 Starting PaddleOCR inference...")
+        # PaddleOCR expects a file path or numpy array. We'll use numpy array.
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        # Save to temp file because PaddleOCR works best with paths or we need to adapt the wrapper
+        # The wrapper I wrote takes a path. Let's update the wrapper or save to temp.
+        # Actually, let's check the wrapper I wrote. It takes image_path. 
+        # I should probably update the wrapper to accept numpy array or save to temp here.
+        # For now, let's save to a temp file.
+        import tempfile
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
+                temp_path = temp_file.name
+            
+            # File is closed now, safe to write
+            cv2.imwrite(temp_path, img)
+            extracted_text = paddle_ocr.extract_text(temp_path)
+        finally:
+            # Clean up
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except:
+                    pass
+        
+        # Clean up
+        try:
+            os.remove(temp_path)
+        except:
+            pass
         
         if not extracted_text:
-            print("No text detected by Tesseract")
+            print("No text detected by PaddleOCR")
             return ""
             
-        print(f"✅ Tesseract extracted text ({len(extracted_text)} chars)")
+        print(f"✅ PaddleOCR extracted text ({len(extracted_text)} chars)")
         
         # Return raw text directly
         return extracted_text
             
     except Exception as e:
-        print(f"Tesseract error: {str(e)}")
+        print(f"PaddleOCR error: {str(e)}")
         import traceback
         traceback.print_exc()
         return ""
@@ -679,14 +709,14 @@ def process_pdf(pdf_bytes: bytes, use_openai: bool = False) -> Dict:
                 if yolo_page_result.get('found_idcard'):
                     found_idcard = True
                 
-                # Run Tesseract for full text
+                # Run PaddleOCR for full text
                 try:
-                    tesseract_page_text = extract_text_with_tesseract(img_bytes)
-                    if tesseract_page_text:
-                        all_general_text.append(f"--- Page {page_num + 1} (Tesseract) ---")
-                        all_general_text.append(tesseract_page_text)
+                    paddle_page_text = extract_text_with_paddle(img_bytes)
+                    if paddle_page_text:
+                        all_general_text.append(f"--- Page {page_num + 1} (PaddleOCR) ---")
+                        all_general_text.append(paddle_page_text)
                 except Exception as e:
-                    print(f"⚠️ Tesseract error on page {page_num + 1}: {e}")
+                    print(f"⚠️ PaddleOCR error on page {page_num + 1}: {e}")
             else:
                 # For YOLO, keep BGR format
                 _, img_encoded = cv2.imencode('.png', img_array)
@@ -1001,27 +1031,27 @@ async def upload_image(
             sys.stdout.flush()
             return JSONResponse(content={"success": True, **result})
         
-        # Process image with BOTH methods when Tesseract is enabled
+        # Process image with BOTH methods when PaddleOCR is enabled
         if use_openai_flag:
-            print("Using COMBINED OCR: YOLO+EasyOCR + Tesseract...")
+            print("Using COMBINED OCR: YOLO+EasyOCR + PaddleOCR...")
             sys.stdout.flush()
             
             # Run YOLO+EasyOCR for structured fields
             yolo_result = process_image(contents)
             
-            # Run Tesseract for full text
+            # Run PaddleOCR for full text
             try:
-                tesseract_text = extract_text_with_tesseract(contents)
-                print(f"✅ Tesseract extracted {len(tesseract_text)} chars")
-            except Exception as tesseract_err:
-                print(f"⚠️ Tesseract error: {str(tesseract_err)}")
-                tesseract_text = ""
+                paddle_text = extract_text_with_paddle(contents)
+                print(f"✅ PaddleOCR extracted {len(paddle_text)} chars")
+            except Exception as paddle_err:
+                print(f"⚠️ PaddleOCR error: {str(paddle_err)}")
+                paddle_text = ""
             
             # Compare and select best result
-            best_result = compare_ocr_results(yolo_result, tesseract_text)
+            best_result = compare_ocr_results(yolo_result, paddle_text)
             print(f"🏆 Best OCR method: {best_result.get('best_method', 'unknown')}")
             print(f"   Comparison: YOLO score={best_result['comparison']['yolo_score']:.1f}, "
-                  f"Tesseract score={best_result['comparison']['tesseract_score']:.1f}")
+                  f"PaddleOCR score={best_result['comparison']['paddle_score']:.1f}")
             
             # Return best result with both options available
             return JSONResponse(content={
@@ -1029,7 +1059,7 @@ async def upload_image(
                 "filename": filename,
                 "extracted_fields": best_result.get("extracted_fields", {}),
                 "general_text": best_result.get("general_text", []),
-                "tesseract_text": tesseract_text,  # Keep full Tesseract text
+                "paddle_text": paddle_text,
                 "found_idcard": best_result.get("found_idcard", False),
                 "tesseract_converted": True,
                 "method": "combined_auto_best",

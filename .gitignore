@@ -23,7 +23,7 @@ temp/
 
 # Generated files
 *.mp3
-*.txt
+
 *.jpg
 *.png
 !captured_image.jpg
@@ -40,4 +40,3 @@ Thumbs.db
 
 # Logs
 *.log
-

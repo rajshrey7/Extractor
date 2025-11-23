@@ -555,7 +555,7 @@
           </div>
           <div class="legend-item">
             <div class="legend-color legend-low"></div>
-            <span>Low (<60%)</span>
+            <span>Low (<60%)< /span>
           </div>
         </div>
 
@@ -571,7 +571,7 @@
               style="max-width: 100%; max-height: 400px; border-radius: 8px; display: block;" />
             <canvas id="confidenceCanvas" class="confidence-canvas" style="display: none;"></canvas>
           </div>
-            style="max-width: 100%; max-height: 400px; border-radius: 8px" />
+          style="max-width: 100%; max-height: 400px; border-radius: 8px" />
           <div id="pdfPreview" style="
                 display: none;
                 padding: 20px;
@@ -593,7 +593,7 @@
                   cursor: pointer;
                 ">
               <input type="checkbox" id="useOpenAI" style="margin-right: 8px; width: 18px; height: 18px" />
-              <span>🤖 Use Tesseract OCR (Offline)</span>
+              <span>🤖 Use PaddleOCR (Offline)</span>
             </label>
           </div>
           <button class="btn" id="processBtn" onclick="processImage()" disabled>
@@ -601,7 +601,7 @@
           </button>
           <br />
           <small style="color: #666; margin-top: 10px; display: block">
-            <strong>Tesseract OCR:</strong> Uses Tesseract engine for offline text extraction.<br />
+            <strong>PaddleOCR:</strong> Uses PaddleOCR engine for offline text extraction.<br />
             <strong>YOLO+EasyOCR:</strong> Uses your trained YOLO model for
             field detection (default).
           </small>
@@ -3183,10 +3183,10 @@
     function initConfidenceOverlay() {
       const imageElement = document.getElementById('previewImg');
       const canvasElement = document.getElementById('confidenceCanvas');
-      
+
       if (imageElement && canvasElement) {
         confidenceOverlay = new ConfidenceOverlay(imageElement, canvasElement);
-        
+
         // Listen for region correction events
         window.addEventListener('regionCorrection', (event) => {
           const { region_id, text } = event.detail;
@@ -3210,29 +3210,29 @@
     async function processImageWithStreaming() {
       const fileInput = document.getElementById('fileInput');
       const file = fileInput.files[0];
-      
+
       if (!file) {
         alert('Please select a file first');
         return;
       }
 
       document.getElementById('loading').classList.add('show');
-      
+
       try {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('stream', 'true');
-        
+
         const response = await fetch('/api/upload', {
           method: 'POST',
           body: formData
         });
-        
+
         const data = await response.json();
-        
+
         if (data.success && data.image_id) {
           currentImageId = data.image_id;
-          
+
           const previewImg = document.getElementById('previewImg');
           previewImg.src = data.image_path;
           previewImg.onload = () => {
@@ -3241,14 +3241,14 @@
             document.getElementById('confidenceLegend').style.display = 'flex';
             document.getElementById('docConfidence').style.display = 'block';
             document.getElementById('confidenceCanvas').style.display = 'block';
-            
+
             if (!confidenceOverlay) {
               initConfidenceOverlay();
             } else {
               confidenceOverlay.clear();
               confidenceOverlay.updateCanvasSize();
             }
-            
+
             confidenceOverlay.connectSSE(data.image_id);
           };
         }
@@ -3271,9 +3271,9 @@
           <span>🔄 Show Live Confidence Zones</span>
         `;
         useOpenAICheckbox.parentElement.parentElement.appendChild(streamingLabel);
-        
+
         const oldProcessImage = window.processImage;
-        window.processImage = async function() {
+        window.processImage = async function () {
           const useStreaming = document.getElementById('useStreaming')?.checked || false;
           if (useStreaming) {
             await processImageWithStreaming();

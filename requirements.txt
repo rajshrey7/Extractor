@@ -1,36 +1,20 @@
-# ============================================================
-# OCR Text Extraction & Verification System - Requirements
-# ============================================================
+# Core API
+fastapi
+uvicorn
+python-multipart
+requests
 
-# Core Web Framework
-fastapi==0.115.12
-uvicorn==0.34.3
-python-multipart==0.0.20
+# Image Processing
+opencv-python
+numpy
+Pillow
+PyMuPDF
 
-# Computer Vision & OCR
-opencv-python==4.11.0.86
-easyocr==1.7.2
-ultralytics==8.3.156
-pillow==11.0.0
-numpy==1.26.4
-
-# Data Processing
-pandas>=2.0.0
-requests>=2.31.0
+# OCR & ML Models
+easyocr
+ultralytics
+paddlepaddle
+paddleocr
 
 # Utilities
-nest-asyncio>=1.6.0
-
-# PDF Processing
-pdf2image>=1.16.3
-PyMuPDF>=1.23.0
-
-# Browser Automation (for Form Filling)
-selenium>=4.0.0
-
-# ============================================================
-# Optional Dependencies:
-# - Tesseract OCR: Install separately from https://github.com/tesseract-ocr/tesseract
-#   Required for offline OCR functionality
-# - Google Vision API: Configure in config.py for enhanced OCR
-# ============================================================
+aiofiles
