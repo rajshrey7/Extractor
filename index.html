@@ -10,7 +10,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <link rel="stylesheet" href="/static/css/confidence_overlay.css">
+  <link rel="stylesheet" href="/static/css/modern_theme.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code&display=swap"
+    rel="stylesheet">
   <style>
     [x-cloak] {
       display: none !important;
@@ -427,10 +430,10 @@
           Verify Data
         </button>
         <button class="tab px-6 py-3 font-medium" onclick="switchTab('jobform')" x-text="t('tab_jobform')">
-          Job Form Filler
+          Auto Fill Form
         </button>
         <button class="tab px-6 py-3 font-medium" onclick="switchTab('autofill')" x-text="t('tab_autofill')">
-          Auto-Fill Form
+          Match Fields
         </button>
       </div>
 
@@ -3247,132 +3250,132 @@
       document.getElementById(id).classList.remove("show");
     }
   </script>
-<script src="/static/js/camera.js"></script>
+  <script src="/static/js/camera.js"></script>
 
-<!-- Confidence Overlay Module -->
-<script src="/static/js/confidence_overlay.js"></script>
-<script>
+  <!-- Confidence Overlay Module -->
+  <script src="/static/js/confidence_overlay.js"></script>
+  <script>
     // Global confidence overlay instance
     let confidenceOverlay = null;
     let currentImageId = null;
 
     // Initialize confidence overlay
     function initConfidenceOverlay() {
-        const imageElement = document.getElementById('previewImg');
-        const canvasElement = document.getElementById('confidenceCanvas');
+      const imageElement = document.getElementById('previewImg');
+      const canvasElement = document.getElementById('confidenceCanvas');
 
-        if (imageElement && canvasElement) {
-            confidenceOverlay = new ConfidenceOverlay(imageElement, canvasElement);
+      if (imageElement && canvasElement) {
+        confidenceOverlay = new ConfidenceOverlay(imageElement, canvasElement);
 
-            // Listen for region correction events
-            window.addEventListener('regionCorrection', (event) => {
-                const { region_id, text } = event.detail;
-                console.log('Region correction requested:', region_id, text);
-            });
-        }
+        // Listen for region correction events
+        window.addEventListener('regionCorrection', (event) => {
+          const { region_id, text } = event.detail;
+          console.log('Region correction requested:', region_id, text);
+        });
+      }
     }
 
     // Toggle confidence overlay visibility
     function toggleConfidenceOverlay(enabled) {
-        if (confidenceOverlay) {
-            confidenceOverlay.toggle(enabled);
-        }
-        const canvas = document.getElementById('confidenceCanvas');
-        if (canvas) {
-            canvas.style.display = enabled ? 'block' : 'none';
-        }
+      if (confidenceOverlay) {
+        confidenceOverlay.toggle(enabled);
+      }
+      const canvas = document.getElementById('confidenceCanvas');
+      if (canvas) {
+        canvas.style.display = enabled ? 'block' : 'none';
+      }
     }
 
     // Process image with streaming
     async function processImageWithStreaming() {
-        const fileInput = document.getElementById('fileInput');
-        const file = fileInput.files[0];
+      const fileInput = document.getElementById('fileInput');
+      const file = fileInput.files[0];
 
-        if (!file) {
-            alert('Please select a file first');
-            return;
-        }
+      if (!file) {
+        alert('Please select a file first');
+        return;
+      }
 
-        document.getElementById('loading').classList.add('show');
+      document.getElementById('loading').classList.add('show');
 
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('stream', 'true');
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('stream', 'true');
 
-            const useOpenAI = document.getElementById("useOpenAI");
-            formData.append(
-                "use_openai",
-                useOpenAI && useOpenAI.checked ? "true" : "false"
-            );
+        const useOpenAI = document.getElementById("useOpenAI");
+        formData.append(
+          "use_openai",
+          useOpenAI && useOpenAI.checked ? "true" : "false"
+        );
 
-            const useTrOCR = document.getElementById("useTrOCR");
-            formData.append(
-                "use_trocr",
-                useTrOCR && useTrOCR.checked ? "true" : "false"
-            );
+        const useTrOCR = document.getElementById("useTrOCR");
+        formData.append(
+          "use_trocr",
+          useTrOCR && useTrOCR.checked ? "true" : "false"
+        );
 
-            const response = await fetch('/api/upload', {
-                method: 'POST',
-                body: formData
-            });
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
 
-            const data = await response.json();
+        const data = await response.json();
 
-            if (data.success && data.image_id) {
-                currentImageId = data.image_id;
+        if (data.success && data.image_id) {
+          currentImageId = data.image_id;
 
-                const previewImg = document.getElementById('previewImg');
-                previewImg.src = data.image_path;
-                previewImg.onload = () => {
-                    document.getElementById('imagePreview').style.display = 'block';
-                    document.getElementById('overlayControls').style.display = 'flex';
-                    document.getElementById('confidenceLegend').style.display = 'flex';
-                    document.getElementById('docConfidence').style.display = 'block';
-                    document.getElementById('confidenceCanvas').style.display = 'block';
+          const previewImg = document.getElementById('previewImg');
+          previewImg.src = data.image_path;
+          previewImg.onload = () => {
+            document.getElementById('imagePreview').style.display = 'block';
+            document.getElementById('overlayControls').style.display = 'flex';
+            document.getElementById('confidenceLegend').style.display = 'flex';
+            document.getElementById('docConfidence').style.display = 'block';
+            document.getElementById('confidenceCanvas').style.display = 'block';
 
-                    if (!confidenceOverlay) {
-                        initConfidenceOverlay();
-                    } else {
-                        confidenceOverlay.clear();
-                        confidenceOverlay.updateCanvasSize();
-                    }
-
-                    confidenceOverlay.connectSSE(data.image_id);
-                };
+            if (!confidenceOverlay) {
+              initConfidenceOverlay();
+            } else {
+              confidenceOverlay.clear();
+              confidenceOverlay.updateCanvasSize();
             }
-        } catch (error) {
-            console.error('Error:', error);
-            showAlert('alert', 'Error processing image: ' + error.message, 'error');
-        } finally {
-            document.getElementById('loading').classList.remove('show');
+
+            confidenceOverlay.connectSSE(data.image_id);
+          };
         }
+      } catch (error) {
+        console.error('Error:', error);
+        showAlert('alert', 'Error processing image: ' + error.message, 'error');
+      } finally {
+        document.getElementById('loading').classList.remove('show');
+      }
     }
 
     // Add streaming toggle on page load
     document.addEventListener('DOMContentLoaded', () => {
-        const useOpenAICheckbox = document.getElementById('useOpenAI');
-        if (useOpenAICheckbox && useOpenAICheckbox.parentElement) {
-            const streamingLabel = document.createElement('label');
-            streamingLabel.style.cssText = 'display: inline-flex; align-items: center; cursor: pointer; margin-left: 20px;';
-            streamingLabel.innerHTML = `
+      const useOpenAICheckbox = document.getElementById('useOpenAI');
+      if (useOpenAICheckbox && useOpenAICheckbox.parentElement) {
+        const streamingLabel = document.createElement('label');
+        streamingLabel.style.cssText = 'display: inline-flex; align-items: center; cursor: pointer; margin-left: 20px;';
+        streamingLabel.innerHTML = `
           <input type="checkbox" id="useStreaming" style="margin-right: 8px; width: 18px; height: 18px" />
           <span>🔄 Show Live Confidence Zones</span>
         `;
-            useOpenAICheckbox.parentElement.parentElement.appendChild(streamingLabel);
+        useOpenAICheckbox.parentElement.parentElement.appendChild(streamingLabel);
 
-            const oldProcessImage = window.processImage;
-            window.processImage = async function () {
-                const useStreaming = document.getElementById('useStreaming')?.checked || false;
-                if (useStreaming) {
-                    await processImageWithStreaming();
-                } else if (oldProcessImage) {
-                    await oldProcessImage();
-                }
-            };
-        }
+        const oldProcessImage = window.processImage;
+        window.processImage = async function () {
+          const useStreaming = document.getElementById('useStreaming')?.checked || false;
+          if (useStreaming) {
+            await processImageWithStreaming();
+          } else if (oldProcessImage) {
+            await oldProcessImage();
+          }
+        };
+      }
     });
-</script>
+  </script>
 </body>
 
 </html>
