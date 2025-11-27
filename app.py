@@ -16,6 +16,7 @@ import base64
 from difflib import SequenceMatcher
 import os
 import uuid
+from datetime import datetime
 import requests
 import quality_score
 from ocr_verifier import OCRVerifier
@@ -26,6 +27,18 @@ from trocr_handwritten import TrOCRWrapper
 from language_support import LanguageLoader
 from ocr_comparison import compare_ocr_results
 import ocr_confidence
+
+# MOSIP Integration imports (runtime - won't break app if unavailable)
+try:
+    from packet_handler import PacketHandler
+    from mosip_field_mapper import MosipFieldMapper
+    MOSIP_AVAILABLE = True
+    print("✅ MOSIP modules loaded successfully")
+except ImportError as e:
+    print(f"⚠️ MOSIP modules not available: {e}")
+    MOSIP_AVAILABLE = False
+    PacketHandler = None
+    MosipFieldMapper = None
 
 # Import GoogleFormHandler only when needed (lazy import)
 # This prevents importing the Streamlit app.py from Auto-Job-Form-Filler-Agent
@@ -83,6 +96,17 @@ paddle_ocr = None
 trocr_ocr = None
 language_loader = LanguageLoader(SELECTED_LANGUAGE)
 verifier = OCRVerifier(SELECTED_LANGUAGE)
+
+# Initialize MOSIP components
+PACKETS_DIR = "mock_packets"
+if MOSIP_AVAILABLE:
+    os.makedirs(PACKETS_DIR, exist_ok=True)
+    packet_handler = PacketHandler(PACKETS_DIR)
+    mosip_mapper = MosipFieldMapper()
+    print(f"✅ MOSIP components initialized (packets dir: {PACKETS_DIR})")
+else:
+    packet_handler = None
+    mosip_mapper = None
 
 def initialize_models():
     global yolo_model, ocr_reader, paddle_ocr, trocr_ocr
@@ -2004,6 +2028,215 @@ async def get_filled_form(form_url: str):
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ========== MOSIP Integration Endpoints ==========
+
+@app.post("/api/mosip/send")
+async def send_to_mosip(data: Dict[str, Any]):
+    """Convert OCR extracted data to MOSIP format and create a packet."""
+    if not MOSIP_AVAILABLE:
+        raise HTTPException(status_code=503, detail="MOSIP integration not available. Missing packet_handler or mosip_field_mapper modules.")
+    
+    try:
+        extracted_fields = data.get("extracted_fields", {})
+        if not extracted_fields:
+            raise HTTPException(status_code=400, detail="No extracted_fields provided")
+        
+        # Map OCR data to MOSIP schema
+        mosip_data = mosip_mapper.map_to_mosip_schema(extracted_fields)
+        
+        if not mosip_data:
+            raise HTTPException(status_code=400, detail="No valid fields to map to MOSIP schema")
+        
+        # Generate packet ID
+        packet_id = str(uuid.uuid4())[:8]
+        
+        # Create packet directory structure
+        packet_dir = os.path.join(PACKETS_DIR, packet_id)
+        os.makedirs(packet_dir, exist_ok=True)
+        
+        # Create ID.json with demographic data
+        id_json_path = os.path.join(packet_dir, "ID.json")
+        with open(id_json_path, "w") as f:
+            json.dump({"identity": mosip_data}, f, indent=2)
+        
+        # Prepare OCR result for packet handler
+        ocr_result = {
+            "mosip_data": mosip_data,
+            "quality_scores": data.get("quality_scores", {}),
+            "raw_ocr_data": {"full_text": data.get("raw_text", "")}
+        }
+        
+        # Add OCR artifacts to packet
+        packet_handler.add_ocr_to_packet(packet_id, ocr_result)
+        
+        return {
+            "success": True,
+            "packet_id": packet_id,
+            "mosip_data": mosip_data,
+            "message": f"MOSIP packet {packet_id} created successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating MOSIP packet: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to create MOSIP packet: {str(e)}")
+
+@app.get("/api/mosip/packets")
+async def list_mosip_packets():
+    """List all MOSIP packets in the mock_packets directory."""
+    if not MOSIP_AVAILABLE:
+        raise HTTPException(status_code=503, detail="MOSIP integration not available")
+    
+    try:
+        if not os.path.exists(PACKETS_DIR):
+            return {"packets": []}
+        
+        packets = []
+        for packet_id in os.listdir(PACKETS_DIR):
+            packet_path = os.path.join(PACKETS_DIR, packet_id)
+            if not os.path.isdir(packet_path):
+                continue
+            
+            # Try to read ID.json to get basic info
+            id_json_path = os.path.join(packet_path, "ID.json")
+            packet_info = {
+                "id": packet_id,
+                "created": os.path.getctime(packet_path)
+            }
+            
+            if os.path.exists(id_json_path):
+                try:
+                    with open(id_json_path, "r") as f:
+                        data = json.load(f)
+                        identity = data.get("identity", {})
+                        packet_info["fields"] = list(identity.keys())
+                        packet_info["field_count"] = len(identity)
+                except:
+                    pass
+            
+            packets.append(packet_info)
+        
+        # Sort by creation time (newest first)
+        packets.sort(key=lambda x: x.get("created", 0), reverse=True)
+        
+        return {"packets": packets}
+    except Exception as e:
+        print(f"Error listing MOSIP packets: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to list packets: {str(e)}")
+
+@app.get("/api/mosip/packet/{packet_id}")
+async def get_mosip_packet(packet_id: str):
+    """Get details of a specific MOSIP packet."""
+    if not MOSIP_AVAILABLE:
+        raise HTTPException(status_code=503, detail="MOSIP integration not available")
+    
+    try:
+        packet_path = os.path.join(PACKETS_DIR, packet_id)
+        if not os.path.exists(packet_path) or not os.path.isdir(packet_path):
+            raise HTTPException(status_code=404, detail="Packet not found")
+        
+        # Read all JSON files in the packet
+        packet_data = {}
+        
+        for filename in os.listdir(packet_path):
+            if filename.endswith(".json"):
+                file_path = os.path.join(packet_path, filename)
+                try:
+                    with open(file_path, "r") as f:
+                        packet_data[filename] = json.load(f)
+                except:
+                    pass
+        
+        return {
+            "packet_id": packet_id,
+            "data": packet_data
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting MOSIP packet: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get packet: {str(e)}")
+
+@app.post("/api/mosip/upload/{packet_id}")
+async def upload_packet_to_mosip(packet_id: str):
+    """
+    Upload a locally created packet to MOSIP Pre-Registration server.
+    Uses the official MOSIP API format found in DemographicController.java
+    """
+    if not MOSIP_AVAILABLE:
+        # Even in mock mode, we can simulate upload
+        from mosip_client import MosipClient
+        client = MosipClient(mock_mode=True)
+    else:
+        from mosip_client import MosipClient
+        client = MosipClient(mock_mode=False)
+    
+    try:
+        # Load packet data
+        packet_path = os.path.join(PACKETS_DIR, packet_id)
+        if not os.path.exists(packet_path):
+            raise HTTPException(status_code=404, detail="Packet not found")
+        
+        # Read ID.json (demographic data)
+        id_json_path = os.path.join(packet_path, "ID.json")
+        if not os.path.exists(id_json_path):
+            raise HTTPException(status_code=400, detail="Packet missing ID.json")
+        
+        with open(id_json_path, "r") as f:
+            id_data = json.load(f)
+        
+        demographic_data = id_data.get("identity", {})
+        
+        # Authenticate with MOSIP
+        if not client.authenticate():
+            raise HTTPException(status_code=503, detail="MOSIP authentication failed")
+        
+        # Upload to MOSIP using official API format
+        result = client.create_application(demographic_data)
+        
+        if result.get("errors"):
+            raise HTTPException(
+                status_code=500, 
+                detail=f"MOSIP API error: {result['errors']}"
+            )
+        
+        # Extract PRID (Pre-Registration ID) from response
+        prid = result.get("response", {}).get("preRegistrationId")
+        
+        if not prid:
+            raise HTTPException(status_code=500, detail="No PRID returned from MOSIP")
+        
+        # Save PRID and upload status to metadata
+        metadata_path = os.path.join(packet_path, "metadata.json")
+        metadata = {
+            "packet_id": packet_id,
+            "mosip_prid": prid,
+            "upload_timestamp": datetime.now().isoformat(),
+            "upload_status": "success",
+            "mosip_response": result
+        }
+        
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f, indent=2)
+        
+        return {
+            "success": True,
+            "packet_id": packet_id,
+            "mosip_prid": prid,
+            "message": f"Packet uploaded successfully to MOSIP. PRID: {prid}",
+            "response": result.get("response", {})
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error uploading to MOSIP: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @app.get("/api/health")
 async def health_check():

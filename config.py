@@ -3,11 +3,11 @@ Configuration file for API keys
 """
 import os
 
-# OpenRouter API Key for AI models
-OPENROUTER_API_KEY = "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"
+# OpenRouter API Key for AI models (Optional)
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 
-# Llama Cloud API Key for resume parsing
-LLAMA_CLOUD_API_KEY = "llx-gPvqEiZkpooRYYDnS1dKLGGoCpBXK9YUeak5ZqPqiIWfpESB"
+# Llama Cloud API Key for resume parsing (Optional)
+LLAMA_CLOUD_API_KEY = os.getenv("LLAMA_CLOUD_API_KEY", "")
 
 # Available AI models
 OPENROUTER_MODELS = {
@@ -32,3 +32,11 @@ OPENAI_API_KEY = None
 # Language Configuration
 SUPPORTED_LANGUAGES = ["en", "ar"]
 SELECTED_LANGUAGE = "en"
+
+# MOSIP Pre-Registration Configuration
+MOSIP_ENABLED = False  # Set to True when you have MOSIP server credentials
+MOSIP_BASE_URL = "https://dev2.mosip.net"
+MOSIP_PREREG_URL = f"{MOSIP_BASE_URL}/preregistration/v1"
+MOSIP_CLIENT_ID = "mosip-prereg-client"
+MOSIP_CLIENT_SECRET = ""  # Add your secret here
+MOSIP_TIMEOUT = 30

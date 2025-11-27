@@ -40,3 +40,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# MOSIP
+mock_packets/
+mock_scans/

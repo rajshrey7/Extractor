@@ -621,6 +621,29 @@ These are required only for Resume Parsing and AI Form Filling:
 6. **PDF Processing**: Multi-page PDFs take longer; process single pages if possible
 7. **Language Settings**: Set the correct language before processing for better results
 
+## 🆔 MOSIP Integration
+
+The system includes a complete integration layer for the MOSIP ID Lifecycle ecosystem, supporting Pre-Registration, Registration Client, and Android RC.
+
+### Key Features
+- **Packet Management**: Create and manage MOSIP-compliant registration packets locally
+- **Pre-Registration API**: Direct upload to MOSIP Pre-Registration server
+- **Quality Scores**: Include image quality assessment (blur, lighting) in packets
+- **Schema Mapping**: Automatic mapping of OCR fields to MOSIP ID Schema (v1.2.0+)
+- **Mock Mode**: Built-in mock server for testing without live MOSIP credentials
+
+### Usage
+1. **Create Packet**: After OCR extraction, click "Create MOSIP Packet" in the UI
+2. **View Packets**: Manage created packets in the "MOSIP Packets" tab
+3. **Upload**: Click "Upload to MOSIP" to send data to the Pre-Registration server
+4. **Configuration**: Set `MOSIP_ENABLED = True` in `config.py` to switch from mock to real mode
+
+### Project Structure
+- `mosip_client.py`: Handles communication with MOSIP APIs
+- `mosip_field_mapper.py`: Maps OCR fields to MOSIP schema
+- `packet_handler.py`: Manages local packet storage and metadata
+- `mock_packets/`: Directory for locally created packets
+
 ## 📄 License
 
 This project is provided as-is for educational and development purposes.
