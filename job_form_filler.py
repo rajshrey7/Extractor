@@ -10,7 +10,7 @@ import sys
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Dict, List, Optional, Any, Tuple, Union
-from config import OPENROUTER_API_KEY, OPENROUTER_MODELS, DEFAULT_MODEL, SELECTED_LANGUAGE
+from config import SELECTED_LANGUAGE
 from language_support import LanguageLoader
 
 # Initialize Language Loader

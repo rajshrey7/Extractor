@@ -5,15 +5,12 @@ from typing import Dict, Any, List, Optional
 from difflib import SequenceMatcher
 import asyncio
 
-# Import configuration
-try:
-    from config import OPENROUTER_API_KEY, LLAMA_CLOUD_API_KEY, DEFAULT_MODEL, OPENROUTER_MODELS
-except ImportError:
-    # Fallback if config not found
-    OPENROUTER_API_KEY = None
-    LLAMA_CLOUD_API_KEY = None
-    DEFAULT_MODEL = "openai/gpt-3.5-turbo"
-    OPENROUTER_MODELS = {}
+# Import configuration (optional AI features)
+# These are only needed for advanced AI-powered form filling
+OPENROUTER_API_KEY = None
+LLAMA_CLOUD_API_KEY = None
+DEFAULT_MODEL = None
+OPENROUTER_MODELS = {}
 
 # Import JobFormFiller
 try:

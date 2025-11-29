@@ -19,7 +19,7 @@ import requests
 import quality_score
 from ocr_verifier import OCRVerifier
 from job_form_filler import JobFormFiller
-from config import OPENROUTER_API_KEY, LLAMA_CLOUD_API_KEY, DEFAULT_MODEL, OPENROUTER_MODELS, SELECTED_LANGUAGE
+from config import SELECTED_LANGUAGE
 from paddle_ocr_module import PaddleOCRWrapper
 from trocr_handwritten import TrOCRWrapper
 from language_support import LanguageLoader
