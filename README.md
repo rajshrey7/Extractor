@@ -604,9 +604,8 @@ To integrate additional OCR providers:
 - **Requests**: HTTP library for API calls
 
 ### AI Dependencies (Optional)
-These are required only for Resume Parsing and AI Form Filling:
-- **Llama Index**: RAG framework for AI features
-- **Llama Parse**: PDF parsing for resumes
+
+
 - **Selenium**: Browser automation for form filling
 - **Sentence Transformers**: Embeddings for semantic search
 - **FAISS**: Vector storage for similarity search

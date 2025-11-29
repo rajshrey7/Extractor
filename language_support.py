@@ -28,7 +28,6 @@ class LanguageLoader:
             "use_google_vision": "🤖 Use Google Vision API (Direct Image to JSON)",
             "process_btn": "Process Image",
             "google_vision_note": "Google Vision: Uses Google Cloud Vision API to extract structured JSON from images.",
-            "yolo_note": "YOLO+EasyOCR: Uses your trained YOLO model for field detection (default).",
             "processing": "Processing image... Please wait",
             "extracted_json_title": "📄 Extracted Data (JSON Format)",
             "copy_json": "📋 Copy JSON",
@@ -307,26 +306,38 @@ class LanguageLoader:
     }
 
     # Field Types (Synonyms for normalization)
+    # Keys use Title Case to match regex pattern keys and ensure consistency
     FIELD_TYPES = {
         "en": {
-            'name': ['name', 'full name', 'first name', 'last name', 'surname', 'given name'],
-            'dob': ['dob', 'date of birth', 'birthdate', 'birth date', 'date_of_birth'],
-            'mobile': ['mobile', 'phone', 'phone number', 'contact', 'mobile number', 'telephone'],
-            'email': ['email', 'e-mail', 'email address', 'mail'],
-            'id_number': ['id', 'id number', 'aadhaar', 'pan', 'passport', 'driving license', 'license number', 'card number'],
-            'address': ['address', 'residence', 'location', 'street', 'city', 'state', 'country'],
-            'gender': ['gender', 'sex'],
-            'pincode': ['pincode', 'pin code', 'postal code', 'zip code', 'zip']
+            'Name': ['name', 'full name', 'first name', 'last name', 'surname', 'given name'],
+            'Age': ['age'],
+            'Date of Birth': ['dob', 'date of birth', 'birthdate', 'birth date', 'date_of_birth'],
+            'Phone': ['phone', 'mobile', 'phone number', 'contact', 'mobile number', 'telephone', 'contact number'],
+            'Email': ['email', 'e-mail', 'email address', 'mail'],
+            'Personal No': ['id', 'id number', 'aadhaar', 'pan', 'personal no', 'personal number', 'national id'],
+            'Passport No': ['passport', 'passport no', 'passport number', 'document no', 'document number'],
+            'Card No': ['card no', 'card number', 'driving license', 'license number'],
+            'Address': ['address', 'residence', 'location', 'street'],
+            'City': ['city', 'town'],
+            'State': ['state', 'province'],
+            'Country': ['country', 'nation'],
+            'Gender': ['gender', 'sex'],
+            'Pincode': ['pincode', 'pin code', 'postal code', 'zip code', 'zip']
         },
         "ar": {
-            'name': ['الاسم', 'الاسم الكامل', 'الاسم الأول', 'اللقب', 'اسم العائلة'],
-            'dob': ['تاريخ الميلاد', 'الميلاد', 'يوم الميلاد'],
-            'mobile': ['رقم الهاتف', 'الجوال', 'الهاتف', 'رقم الجوال', 'تلفون'],
-            'email': ['البريد الإلكتروني', 'ايميل', 'بريد'],
-            'id_number': ['رقم الهوية', 'الرقم الوطني', 'رقم الجواز', 'رقم البطاقة', 'الرقم الشخصي'],
-            'address': ['العنوان', 'الموقع', 'مكان الإقامة', 'المدينة', 'الشارع'],
-            'gender': ['الجنس', 'النوع'],
-            'pincode': ['الرمز البريدي', 'صندوق البريد']
+            'Name': ['الاسم', 'الاسم الكامل', 'الاسم الأول', 'اللقب', 'اسم العائلة'],
+            'Age': ['العمر'],
+            'Date of Birth': ['تاريخ الميلاد', 'الميلاد', 'يوم الميلاد'],
+            'Phone': ['رقم الهاتف', 'الجوال', 'الهاتف', 'رقم الجوال', 'تلفون'],
+            'Email': ['البريد الإلكتروني', 'ايميل', 'بريد'],
+            'Personal No': ['رقم الهوية', 'الرقم الوطني', 'الرقم الشخصي'],
+            'Passport No': ['رقم الجواز', 'رقم جواز السفر'],
+            'Card No': ['رقم البطاقة'],
+            'Address': ['العنوان', 'الموقع', 'مكان الإقامة'],
+            'City': ['المدينة', 'البلدة'],
+            'Country': ['البلد', 'الدولة'],
+            'Gender': ['الجنس', 'النوع'],
+            'Pincode': ['الرمز البريدي', 'صندوق البريد']
         }
     }
 

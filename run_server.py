@@ -8,12 +8,6 @@ print("="*60)
 print("Starting OCR Server...")
 print("="*60)
 
-# Check if model exists
-if not os.path.exists("Mymodel.pt"):
-    print("\n⚠️  WARNING: Mymodel.pt not found!")
-    print("   Some features may not work.")
-    print("   Continuing anyway...\n")
-
 try:
     import uvicorn
     from app import app

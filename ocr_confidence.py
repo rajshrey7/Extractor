@@ -1,7 +1,7 @@
 """
 OCR Confidence Computation Module
 Computes per-region confidence scores for OCR results by combining:
-- OCR engine native confidence (EasyOCR)
+- OCR engine native confidence (PaddleOCR)
 - Image quality metrics (blur, lighting)
 - Text quality heuristics (length, character diversity)
 """
@@ -227,6 +227,14 @@ def get_region_confidence(
         else:
             text = str(ocr_result)
             ocr_conf = 0.7
+    elif ocr_method == 'paddle':
+        # PaddleOCR result passed as (text, confidence) tuple
+        if isinstance(ocr_result, (list, tuple)) and len(ocr_result) >= 2:
+            text = str(ocr_result[0])
+            ocr_conf = float(ocr_result[1])
+        else:
+            text = str(ocr_result)
+            ocr_conf = 0.9 # Default high confidence for Paddle
     else:
         # Generic fallback
         text = str(ocr_result) if ocr_result else ""

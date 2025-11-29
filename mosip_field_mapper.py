@@ -52,6 +52,22 @@ class MosipFieldMapper:
         
         return mosip_data
 
+    def map_metadata(self, ocr_metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Maps a dictionary of OCR metadata (like confidence scores) to MOSIP schema fields.
+        """
+        mosip_metadata = {}
+        
+        for ocr_key, ocr_value in ocr_metadata.items():
+            normalized_key = ocr_key.lower().strip()
+            mapped_key = self._find_mosip_key(normalized_key)
+            
+            if mapped_key:
+                # Store the metadata for the mapped key
+                mosip_metadata[mapped_key] = ocr_value
+                
+        return mosip_metadata
+
     def _find_mosip_key(self, ocr_key: str) -> Optional[str]:
         """
         Finds the corresponding MOSIP key for a given OCR key using keyword matching and fuzzy logic.

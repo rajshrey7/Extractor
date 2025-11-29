@@ -41,7 +41,7 @@ class TrOCRWrapper:
         Args:
             image: PIL Image or numpy array (OpenCV format BGR)
         Returns:
-            str: Extracted text
+            tuple: (text, confidence) where confidence is a float between 0.0 and 1.0
         """
         try:
             # Convert to PIL Image if it's a numpy array
@@ -55,14 +55,49 @@ class TrOCRWrapper:
             pixel_values = self.processor(image, return_tensors="pt").pixel_values
             pixel_values = pixel_values.to(self.device)
             
-            # Generate text
-            generated_ids = self.model.generate(pixel_values)
-            generated_text = self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+            # Generate text with scores
+            outputs = self.model.generate(
+                pixel_values,
+                return_dict_in_generate=True,
+                output_scores=True
+            )
             
-            return generated_text.strip()
+            generated_text = self.processor.batch_decode(outputs.sequences, skip_special_tokens=True)[0]
+            
+            # Calculate confidence
+            # outputs.scores is a tuple of tensors (one for each step)
+            # Each tensor has shape (batch_size, vocab_size)
+            
+            scores = outputs.scores
+            sequences = outputs.sequences
+            
+            confidences = []
+            # Iterate through generated tokens (skipping the first start token)
+            # sequences has shape (batch_size, sequence_length)
+            # scores has length sequence_length - 1
+            
+            for i, score_tensor in enumerate(scores):
+                if i + 1 >= sequences.shape[1]:
+                    break
+                    
+                # score_tensor: (batch_size, vocab_size)
+                probs = torch.nn.functional.softmax(score_tensor, dim=-1)
+                
+                # Get the token id that was selected
+                token_id = sequences[0, i+1]
+                
+                # Get probability of the selected token
+                prob = probs[0, token_id].item()
+                confidences.append(prob)
+            
+            # Calculate average confidence
+            avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+            
+            return generated_text.strip(), avg_confidence
+            
         except Exception as e:
             logger.error(f"Error during text extraction: {e}")
-            return ""
+            return "", 0.0
 
     def extract_text(self, image_path):
         """
@@ -70,14 +105,14 @@ class TrOCRWrapper:
         Args:
             image_path (str): Path to the image file
         Returns:
-            str: Extracted text
+            tuple: (text, confidence)
         """
         try:
             image = Image.open(image_path).convert("RGB")
             return self.extract_text_from_image(image)
         except Exception as e:
             logger.error(f"Error loading image from path: {e}")
-            return ""
+            return "", 0.0
 
     def extract_text_from_bytes(self, image_bytes):
         """
@@ -85,14 +120,14 @@ class TrOCRWrapper:
         Args:
             image_bytes (bytes): Image data as bytes
         Returns:
-            str: Extracted text
+            tuple: (text, confidence)
         """
         try:
             image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
             return self.extract_text_from_image(image)
         except Exception as e:
             logger.error(f"Error loading image from bytes: {e}")
-            return ""
+            return "", 0.0
 
     def extract_text_from_regions(self, image, regions):
         """
@@ -101,7 +136,7 @@ class TrOCRWrapper:
             image: PIL Image or numpy array
             regions: List of (x1, y1, x2, y2) bounding boxes
         Returns:
-            dict: Mapping of region index to extracted text
+            dict: Mapping of region index to (text, confidence)
         """
         results = {}
         
@@ -119,10 +154,10 @@ class TrOCRWrapper:
                 crop = image_np[y1:y2, x1:x2]
                 
                 # Extract text from the cropped region
-                text = self.extract_text_from_image(crop)
-                results[idx] = text
+                text, conf = self.extract_text_from_image(crop)
+                results[idx] = (text, conf)
             except Exception as e:
                 logger.error(f"Error extracting text from region {idx}: {e}")
-                results[idx] = ""
+                results[idx] = ("", 0.0)
         
         return results

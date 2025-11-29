@@ -43,8 +43,13 @@ class PacketHandler:
             json.dump(result.get("mosip_data", {}), f, indent=2)
             
         # ocr_quality.json
+        # ocr_quality.json
+        quality_data = result.get("quality_scores", {})
+        if "field_confidence" in result:
+             quality_data["field_confidence"] = result["field_confidence"]
+             
         with open(os.path.join(packet_dir, "ocr_quality.json"), "w") as f:
-            json.dump(result.get("quality_scores", {}), f, indent=2)
+            json.dump(quality_data, f, indent=2)
             
         # ocr_full_text.txt
         full_text = result.get("raw_ocr_data", {}).get("full_text", "") # Assuming full text might be passed

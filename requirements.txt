@@ -11,8 +11,6 @@ Pillow
 PyMuPDF
 
 # OCR & ML Models
-easyocr
-ultralytics
 paddlepaddle
 paddleocr
 transformers>=4.30.0

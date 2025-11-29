@@ -3,15 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import cv2
-import easyocr
-from ultralytics import YOLO
 import re
 from collections import defaultdict
 import numpy as np
 from PIL import Image
 import io
 import json
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Tuple
 import base64
 from difflib import SequenceMatcher
 import os
@@ -25,7 +23,6 @@ from config import OPENROUTER_API_KEY, LLAMA_CLOUD_API_KEY, DEFAULT_MODEL, OPENR
 from paddle_ocr_module import PaddleOCRWrapper
 from trocr_handwritten import TrOCRWrapper
 from language_support import LanguageLoader
-from ocr_comparison import compare_ocr_results
 import ocr_confidence
 
 # MOSIP Integration imports (runtime - won't break app if unavailable)
@@ -88,10 +85,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 uploaded_images = {}  # {image_id: image_bytes}
 region_data_cache = {}  # {image_id: [regions]}
 
-# Initialize models
-MODEL_PATH = "Mymodel.pt"
-yolo_model = None
-ocr_reader = None
+# Initialize OCR models
 paddle_ocr = None
 trocr_ocr = None
 language_loader = LanguageLoader(SELECTED_LANGUAGE)
@@ -109,30 +103,8 @@ else:
     mosip_mapper = None
 
 def initialize_models():
-    global yolo_model, ocr_reader, paddle_ocr, trocr_ocr
-    if yolo_model is None:
-        if os.path.exists(MODEL_PATH):
-            try:
-                print(f"📦 Loading YOLOv8 model from {MODEL_PATH}...")
-                yolo_model = YOLO(MODEL_PATH)
-                print("✅ YOLOv8 model loaded successfully!")
-            except Exception as e:
-                print(f"❌ Error loading YOLOv8 model: {e}")
-                yolo_model = None
-        else:
-            print(f"⚠️  Warning: {MODEL_PATH} not found. Some features may not work.")
-            print(f"   Please ensure the model file is in the root directory.")
-    if ocr_reader is None:
-        try:
-            print("📦 Initializing EasyOCR reader...")
-            ocr_langs = language_loader.get_ocr_lang()
-            print(f"📦 Languages: {ocr_langs}")
-            ocr_reader = easyocr.Reader(ocr_langs)
-            print("✅ EasyOCR reader initialized successfully!")
-        except Exception as e:
-            print(f"❌ Error initializing EasyOCR: {e}")
-            ocr_reader = None
-    
+    global paddle_ocr, trocr_ocr
+
     if paddle_ocr is None:
         try:
             print("📦 Initializing PaddleOCR...")
@@ -150,6 +122,28 @@ async def startup_event():
     print("\n🔧 Initializing models on startup...")
     initialize_models()
     print("✅ Startup complete!\n")
+
+@app.get("/api/config")
+async def get_config():
+    """Get configuration and translations"""
+    return {
+        "language": language_loader.current_language,
+        "translations": language_loader.get_all_translations()
+    }
+
+@app.post("/api/set-language")
+async def set_language(language: str = Form(...)):
+    """Set the current language"""
+    if language_loader.set_language(language):
+        # Update global verifier language too
+        verifier.language = language
+        return {
+            "success": True,
+            "language": language_loader.current_language,
+            "translations": language_loader.get_all_translations()
+        }
+    return {"success": False, "message": "Invalid language"}
+
 
 # Class mapping and field equivalents are now dynamic based on language
 def get_field_equivalents():
@@ -282,10 +276,12 @@ def extract_text_with_paddle(image_bytes: bytes) -> str:
         traceback.print_exc()
         return ""
 
-def extract_text_with_trocr(image_bytes: bytes) -> str:
+def extract_text_with_trocr(image_bytes: bytes) -> Tuple[str, Dict[str, float]]:
     """
     Hybrid extraction: Use PaddleOCR for detection (boxes) and TrOCR for recognition (text).
     This is much more accurate for full pages than passing the whole image to TrOCR.
+    Returns:
+        Tuple[str, Dict[str, float]]: (full_text, line_confidences)
     """
     global trocr_ocr, paddle_ocr
     try:
@@ -366,6 +362,7 @@ def extract_text_with_trocr(image_bytes: bytes) -> str:
         
         # 3. Process each line
         full_text = []
+        full_confidences = []
         
         for line_idx, line_boxes in enumerate(lines):
             # Sort boxes in this line by X-coordinate
@@ -404,34 +401,205 @@ def extract_text_with_trocr(image_bytes: bytes) -> str:
             pil_crop = Image.fromarray(crop_rgb)
             
             # Recognize
-            text = trocr_ocr.extract_text_from_image(pil_crop)
+            text, conf = trocr_ocr.extract_text_from_image(pil_crop)
             if text and len(text.strip()) > 0:
                 full_text.append(text)
-                print(f"  Line {line_idx+1}: {text}")
+                full_confidences.append(conf)
+                print(f"  Line {line_idx+1}: {text} (Conf: {conf:.2f})")
         
         final_text = "\n".join(full_text)
         print(f"✅ TrOCR extracted {len(final_text)} chars from {len(full_text)} lines")
-        return final_text
+        
+        # Return both text and field confidence map
+        # We need to map the confidence scores to the lines
+        line_confidences = {}
+        for i, text in enumerate(full_text):
+            # Use the text content as key (or part of it) to map back later
+            # This is a simple heuristic since we don't have field names yet
+            line_confidences[text] = full_confidences[i]
+            
+        return final_text, line_confidences
             
     except Exception as e:
         print(f"TrOCR error: {str(e)}")
         import traceback
         traceback.print_exc()
-        return ""
+        return "", {}
+
+def parse_trocr_direct(text: str, line_confidences: Dict[str, float] = None) -> Tuple[Dict, Dict]:
+    """
+    Direct parser for TrOCR extracted text - returns exactly what was extracted
+    without regex cleaning or normalization. Preserves the raw OCR output.
+    Also maps confidence scores to fields.
+    
+    Example input:
+        "First name : Abigail
+         middle name : produce
+         Last name : summer"
+    
+    Output: 
+        fields: {"Name": "Abigail", "Middle Name": "produce", "Last Name": "summer"}
+        confidences: {"Name": 0.96, "Middle Name": 0.79, "Last Name": 0.76}
+    """
+    import re
+    
+    result = {}
+    field_confidences = {}
+    
+    if line_confidences is None:
+        line_confidences = {}
+    
+    # Field name normalization map - handles common OCR mistakes
+    field_normalization = {
+        'first name': 'Name',
+        'name': 'Name',
+        'full name': 'Name',
+        'given name': 'Name',
+        
+        'middle name': 'Middle Name',
+        'midde name': 'Middle Name',
+        
+        'last name': 'Last Name',
+        'surname': 'Last Name',
+        'family name': 'Last Name',
+        
+        'gender': 'Gender',
+        'cender': 'Gender',  # Common OCR mistake
+        'brender': 'Gender',
+        'sender': 'Gender',
+        'sex': 'Gender',
+        
+        'date of birth': 'Date of Birth',
+        'dob': 'Date of Birth',
+        'birth date': 'Date of Birth',
+        
+        'address line !': 'Address Line 1',  # OCR mistake for "1"
+        'address line 1': 'Address Line 1',
+        'road': 'Address Line 1',
+        'street': 'Address Line 1',
+        
+        'address line 2': 'Address Line 2',
+        'area': 'Address Line 2',
+        'layout': 'Address Line 2',
+        
+        'city': 'City',
+        'town': 'City',
+        
+        'state': 'State',
+        'province': 'State',
+        'stale': 'State',  # OCR mistake
+        
+        'pin code': 'Pin Code',
+        'pincode': 'Pin Code',
+        'zip code': 'Pin Code',
+        'postal code': 'Pin Code',
+        
+        'phone number': 'Phone',
+        'phone': 'Phone',
+        'mobile': 'Phone',
+        'contact': 'Phone',
+        
+        'email id': 'Email',
+        'email': 'Email',
+        'e-mail': 'Email',
+    }
+    
+    lines = text.strip().split('\n')
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Look for pattern "field : value" or "field: value"
+        # More flexible - handles multiple colons, spaces
+        if ':' in line:
+            parts = line.split(':', 1)  # Split on first colon only
+            if len(parts) == 2:
+                field_name = parts[0].strip().lower()
+                field_value = parts[1].strip()
+                
+                # Normalize the field name
+                normalized_field = field_normalization.get(field_name, field_name.title())
+                
+                # Clean up common OCR artifacts in values
+                # Remove extra spaces, but preserve multi-word values
+                field_value = ' '.join(field_value.split())
+                
+                # Fix email artifacts (e.g., "AbigailO great-com" -> "AbigailO@gmail.com")
+                if normalized_field == 'Email' and '@' not in field_value:
+                    # Common OCR mistakes:  "@" becomes "O" or "a"
+                    field_value = field_value.replace(' great-com', '@gmail.com')
+                    field_value = field_value.replace(' great', '@gmail')
+                    field_value = field_value.replace('O@', '@')  # Remove O before @
+                    
+                result[normalized_field] = field_value
+                
+                # Map confidence score
+                # Try to find exact line match first
+                if line in line_confidences:
+                    field_confidences[normalized_field] = line_confidences[line]
+                # Fallback: try to match by value
+                else:
+                    # Default confidence if not found
+                    field_confidences[normalized_field] = 0.85
+    
+    return result, field_confidences
 
 def parse_text_to_json_advanced(text: str, blocks_data: List[Dict] = None) -> Dict:
     """
     Advanced parsing of extracted text into structured JSON format
-    Uses both pattern matching and block-based extraction
+    Uses both pattern matching and block-based extraction with fuzzy matching
     """
+    import difflib
+    
     result = {}
     lines = text.split('\n')
     
     # Enhanced field patterns with better matching
-    # Enhanced field patterns with better matching
     patterns = language_loader.get_regex_patterns()
     
-    # First, try pattern matching on full text
+    # Standard fields we expect
+    # ORDER MATTERS! Put specific keys before general ones to prevent partial match overwrites
+    # Aligned with language_support.py regex keys to prevent duplicates
+    STANDARD_FIELDS = language_loader.get_field_types()
+    
+    # Helper to find closest standard key
+    def get_standard_key(ocr_key):
+        ocr_key = ocr_key.lower().strip()
+        
+        best_match = None
+        max_len = 0
+        
+        # Direct check with "best match" logic (longest matching variation wins)
+        for std_key, variations in STANDARD_FIELDS.items():
+            if ocr_key in variations:
+                return std_key
+            for var in variations:
+                if var in ocr_key:
+                    # Found a substring match.
+                    # If we already have a match, check if this one is "better" (longer specific match)
+                    # e.g. "address line 1" (len 14) is better than "address" (len 7) for input "address line 1"
+                    if len(var) > max_len:
+                        max_len = len(var)
+                        best_match = std_key
+        
+        if best_match:
+            return best_match
+        
+        # Fuzzy check
+        all_variations = []
+        for variations in STANDARD_FIELDS.values():
+            all_variations.extend(variations)
+            
+        matches = difflib.get_close_matches(ocr_key, all_variations, n=1, cutoff=0.7)
+        if matches:
+            match = matches[0]
+            for std_key, variations in STANDARD_FIELDS.items():
+                if match in variations:
+                    return std_key
+        return None
+
+    # 1. Try pattern matching on full text
     for field, field_patterns in patterns.items():
         for pattern in field_patterns:
             match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
@@ -443,7 +611,7 @@ def parse_text_to_json_advanced(text: str, blocks_data: List[Dict] = None) -> Di
                     result[field] = value
                     break
     
-    # Also try extracting from blocks if available (more structured)
+    # 2. Try extracting from blocks if available (more structured)
     if blocks_data:
         for block in blocks_data:
             block_text = block.get("text", "")
@@ -463,70 +631,131 @@ def parse_text_to_json_advanced(text: str, blocks_data: List[Dict] = None) -> Di
                             result[field] = value
                             break
     
-    # If still no structured fields found, try line-by-line key-value extraction
-    if not result:
-        for line in lines:
-            line = line.strip()
-            if not line or len(line) < 3:
-                continue
-            
-            # Try to detect key-value pairs (e.g., "Name: John Doe")
-            if ':' in line:
-                parts = line.split(':', 1)
-                if len(parts) == 2:
-                    key = parts[0].strip().lower()
-                    value = parts[1].strip()
+    # 3. Line-by-line extraction with fuzzy key matching (ALWAYS RUN THIS)
+    for line in lines:
+        if ':' in line:
+            parts = line.split(':', 1)
+            if len(parts) == 2:
+                key_raw = parts[0].strip()
+                value = parts[1].strip()
+                
+                # Clean value
+                # Remove quotes and trailing punctuation
+                value = value.replace('"', '').replace("'", "").strip(" .,!")
+                
+                # Fix common OCR typos in values
+                val_lower = value.lower()
+                
+                # Email fixes - handle common OCR typos
+                if '@' in value or 'gmail' in val_lower or 'yahoo' in val_lower or 'hotmail' in val_lower or 'gymail' in val_lower or 'great-com' in val_lower or 'example' in val_lower:
+                    value = value.replace('Gymail', 'gmail').replace('gymail', 'gmail')
+                    value = value.replace('great-com', 'gmail.com') 
+                    value = value.replace('-com', '.com').replace(' com', '.com')
+                    # Fix .con -> .com (common OCR typo)
+                    value = value.replace('.con', '.com')
+                    value = value.replace(' ', '') 
+                    if '@' not in value and 'gmail' in value:
+                        value = value.replace('gmail', '@gmail')
+                
+                # Find standard key
+                std_key = get_standard_key(key_raw)
+                
+                if std_key:
+                    # Only overwrite if the new value is longer/better or key doesn't exist
+                    # For Name fields, prefer line-by-line if regex result looks suspicious (contains newlines or too long)
+                    should_overwrite = False
                     
-                    # Clean value
-                    value = re.sub(r'[^\w\s@./-\u0600-\u06FF]', '', value).strip()
-                    
-                    if value and len(value) > 1:
-                        # Normalize key names to match standard fields
-                        key_normalized = key.replace(' ', '_').replace('-', '_')
-                        
-                        # Map common variations to standard field names
-                        key_mapping = {
-                            'name': 'Name',
-                            'full_name': 'Name',
-                            'first_name': 'Name',
-                            'given_name': 'Name',
-                            'surname': 'Surname',
-                            'last_name': 'Surname',
-                            'family_name': 'Surname',
-                            'date_of_birth': 'Date of Birth',
-                            'dob': 'Date of Birth',
-                            'passport_no': 'Passport No',
-                            'passport_number': 'Passport No',
-                            'document_no': 'Passport No',
-                            'personal_no': 'Personal No',
-                            'national_id': 'Personal No',
-                            'phone': 'Phone',
-                            'mobile': 'Phone',
-                            'email': 'Email',
-                            'address': 'Address',
-                            'issue_date': 'Issue Date',
-                            'expiry_date': 'Expiry Date',
-                            'nationality': 'Nationality',
-                            'country': 'Country',
-                            'issuing_office': 'Issuing Office',
-                            'height': 'Height',
-                            'sex': 'Sex',
-                            'gender': 'Sex',
-                            'place_of_birth': 'Place of Birth',
-                            'card_no': 'Card No'
-                        }
-                        
-                        # Use mapped key or normalized key
-                        final_key = key_mapping.get(key_normalized, key.replace('_', ' ').title())
-                        result[final_key] = value
-    
+                    if std_key not in result:
+                        should_overwrite = True
+                    else:
+                        current_val = result[std_key]
+                        # If current value has newline, it's likely a bad regex match -> overwrite
+                        if '\n' in current_val:
+                            should_overwrite = True
+                        # If new value is longer and current value is short, overwrite
+                        elif len(value) > len(current_val):
+                            should_overwrite = True
+                        # If it's a Name field and new value is reasonable length, trust line-by-line
+                        elif std_key == 'Name' and len(value) > 2:
+                             # If regex got "Abigailmiddle name" (len 18) and we got "Abigail" (len 7)
+                             # We want "Abigail". Check if current value contains the new value
+                             if value in current_val and len(current_val) > len(value) + 5:
+                                 # Current value is significantly longer, might be merged lines -> overwrite
+                                 should_overwrite = True
+
+                    if should_overwrite:
+                        result[std_key] = value
+                else:
+                    # Keep original key if no match found, but clean it
+                    clean_key = key_raw.title().replace('_', ' ')
+                    # Avoid overwriting existing standard keys with raw keys
+                    if clean_key not in result:
+                        result[clean_key] = value
+
     # Clean up and validate results
     cleaned_result = {}
+    field_metadata = {}
+    
+    # Final Deduplication and Cleanup
+    # Step 1: Normalize all keys to standard format (case-insensitive)
+    normalized_result = {}
+    for key, value in result.items():
+        # Find the standard key for this field
+        std_key = get_standard_key(key)
+        if std_key:
+            # Use the standard key
+            if std_key in normalized_result:
+                # If we already have this key, keep the longer/better value
+                existing_val = normalized_result[std_key]
+                if len(value) > len(existing_val):
+                    normalized_result[std_key] = value
+            else:
+                normalized_result[std_key] = value
+        else:
+            # No standard key found, use the original key with title case
+            clean_key = key.title().replace('_', ' ')
+            if clean_key not in normalized_result:
+                normalized_result[clean_key] = value
+    
+    # Step 2: Remove substring duplicates (e.g., if "First Name" and "Name" both exist)
+    result = normalized_result
+    keys_to_remove = []
+    for key in result.keys():
+        # If we have "Name" and "First Name", remove "First Name"
+        if key == "First Name" and "Name" in result:
+            keys_to_remove.append(key)
+        # If we have "Phone" and "Phone No", remove "Phone No"
+        if key == "Phone No" and "Phone" in result:
+            keys_to_remove.append(key)
+        # If we have "Phone Number" and "Phone", remove "Phone Number"
+        if key == "Phone Number" and "Phone" in result:
+            keys_to_remove.append(key)
+            
+    for key in keys_to_remove:
+        del result[key]
+
     for key, value in result.items():
         if value and isinstance(value, str) and len(value.strip()) > 0:
             cleaned_result[key] = value.strip()
+            
+            # Try to find confidence for this field from blocks
+            confidence = 0.85  # Default confidence for regex matches
+            source = "regex_pattern"
+            
+            if blocks_data:
+                # Find block that contains this value
+                for block in blocks_data:
+                    if value in block.get("text", ""):
+                        confidence = block.get("confidence", 0.95)
+                        source = "block_extraction"
+                        break
+            
+            field_metadata[key] = {
+                "confidence": confidence,
+                "source": source
+            }
     
-    return cleaned_result
+    return cleaned_result, field_metadata
 
 def convert_ocr_to_json_with_ai(ocr_text: str, api_url: Optional[str] = None) -> Dict:
     """
@@ -621,7 +850,7 @@ Return only valid JSON object with extracted fields. Format: {{"field_name": "va
         return {}
 
 def process_image(image_bytes: bytes):
-    """Process image and extract text fields"""
+    """Process image and extract text fields using PaddleOCR"""
     try:
         initialize_models()
     except Exception as e:
@@ -637,93 +866,50 @@ def process_image(image_bytes: bytes):
     if img is None:
         raise Exception("Invalid image file - could not decode")
     
-    if yolo_model is None:
-        raise Exception("YOLO model not loaded. Check if Mymodel.pt exists.")
+    if paddle_ocr is None:
+        raise Exception("PaddleOCR not initialized.")
     
-    if ocr_reader is None:
-        raise Exception("EasyOCR reader not initialized. Check EasyOCR installation.")
-    
+    # Save to temp file for PaddleOCR (wrapper expects path)
+    import tempfile
+    temp_path = None
     try:
-        results = yolo_model(img)[0]
-        boxes = results.boxes
-    except Exception as e:
-        raise Exception(f"YOLO detection failed: {str(e)}")
-    
-    # Process class 0 (general text)
-    raw_boxes = []
-    for box in boxes:
-        class_id = int(box.cls[0])
-        if class_id == 0:
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            raw_boxes.append((x1, y1, x2, y2))
-    
-    general_text = []
-    if raw_boxes:
-        try:
-            filtered_boxes = non_max_suppression_area(raw_boxes)
-            for x1, y1, x2, y2 in filtered_boxes:
-                crop = img[y1:y2, x1:x2]
-                ocr_result = ocr_reader.readtext(crop, detail=0)
-                for line in ocr_result:
-                    cleaned = line.strip()
-                    if cleaned:
-                        general_text.append(cleaned)
-        except Exception as e:
-            print(f"Warning: Error processing general text: {e}")
-    
-    # Process ID card fields (class 3+)
-    raw_fields = defaultdict(set)
-    all_texts = []
-    found_idcard = False
-    
-    for box in boxes:
-        try:
-            class_id = int(box.cls[0])
-            # class_map is now static but we need to handle it carefully
-            # For now, we'll stick to English class names for YOLO output mapping
-            class_map_static = {
-                1: "Surname", 2: "Name", 3: "Nationality", 4: "Sex", 5: "Date of Birth",
-                6: "Place of Birth", 7: "Issue Date", 8: "Expiry Date", 9: "Issuing Office",
-                10: "Height", 11: "Type", 12: "Country", 13: "Passport No",
-                14: "Personal No", 15: "Card No"
-            }
-            if class_id not in class_map_static:
-                continue
-            found_idcard = True
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            crop = img[y1:y2, x1:x2]
-            ocr_result = ocr_reader.readtext(crop, detail=0)
-            extracted = " ".join(ocr_result).strip()
-            field = class_map_static[class_id]
-            cleaned_value = clean_ocr_text(field, extracted)
-            all_texts.append(extracted)
-            if cleaned_value:
-                raw_fields[field].add(cleaned_value)
-        except Exception as e:
-            print(f"Warning: Error processing box {class_id}: {e}")
-            continue
-    
-    final_fields = {}
-    if found_idcard:
-        for field, values in raw_fields.items():
-            standard_field = field.strip() # equivalent_to_standard is removed
-            filtered_values = [v for v in values if len(v) > 1]
-            if filtered_values:
-                final_fields[standard_field] = max(filtered_values, key=len)
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
+            temp_path = temp_file.name
+        cv2.imwrite(temp_path, img)
         
-        for text in all_texts:
-            final_fields.update(detect_unknown_fields(text))
+        # Extract data using PaddleOCR
+        # Returns [{'text': '...', 'confidence': 0.99, 'box': [[x1,y1], ...]}, ...]
+        print("🔍 Starting PaddleOCR extraction...")
+        ocr_results = paddle_ocr.extract_data(temp_path)
+        print(f"✅ PaddleOCR found {len(ocr_results)} text regions")
+        
+    except Exception as e:
+        print(f"❌ PaddleOCR error: {e}")
+        ocr_results = []
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+
+    # Aggregate full text
+    general_text = [item['text'] for item in ocr_results if item['text'].strip()]
+    full_text = "\n".join(general_text)
     
-    # Ensure we always have some fields, even if empty
-    if not final_fields:
-        # If no structured fields found, try to extract from general text
-        for text in general_text:
-            final_fields.update(detect_unknown_fields(text))
+    # Extract structured fields from full text
+    print("🔍 Parsing structured fields...")
+    extracted_fields, extracted_metadata = parse_text_to_json_advanced(full_text, blocks_data=ocr_results)
+    
+    # Check if ID card found (heuristic based on fields)
+    found_idcard = len(extracted_fields) > 0
     
     return {
         "general_text": general_text,
-        "extracted_fields": final_fields,
-        "found_idcard": found_idcard
+        "extracted_fields": extracted_fields,
+        "extracted_metadata": extracted_metadata,
+        "found_idcard": found_idcard,
+        "raw_text": full_text
     }
 
 @app.get("/")
@@ -744,18 +930,17 @@ async def get_config():
 @app.post("/api/set-language")
 async def set_language(language: str = Form(...)):
     """Set application language and reload models"""
-    global ocr_reader
+    global paddle_ocr
     
     if language_loader.set_language(language):
         # Update verifier language
         verifier.set_language(language)
 
-        # Reload OCR model with new language
+        # Reload PaddleOCR model with new language
         try:
-            ocr_langs = language_loader.get_ocr_lang()
-            print(f"🔄 Reloading EasyOCR with languages: {ocr_langs}")
-            ocr_reader = easyocr.Reader(ocr_langs)
-            print("✅ EasyOCR reloaded successfully!")
+            print(f"🔄 Reloading PaddleOCR with language: {language}")
+            paddle_ocr = PaddleOCRWrapper(lang=language if language in ['en', 'ch', 'fr', 'german', 'korean', 'japan'] else 'en')
+            print("✅ PaddleOCR reloaded successfully!")
             
             return {
                 "success": True,
@@ -763,7 +948,7 @@ async def set_language(language: str = Form(...)):
                 "translations": language_loader.get_all_translations()
             }
         except Exception as e:
-            print(f"❌ Error reloading EasyOCR: {e}")
+            print(f"❌ Error reloading PaddleOCR: {e}")
             return JSONResponse(
                 status_code=500,
                 content={"success": False, "error": f"Failed to reload models: {str(e)}"}
@@ -862,17 +1047,7 @@ def process_pdf(pdf_bytes: bytes, use_openai: bool = False) -> Dict:
             img_bytes = img_encoded.tobytes()
             
             if use_openai:
-                # Use COMBINED OCR: YOLO+EasyOCR + Tesseract
                 print(f"Using combined OCR for page {page_num + 1}")
-                
-                # Run YOLO for structured fields
-                yolo_page_result = process_image(img_bytes)
-                if yolo_page_result.get('extracted_fields'):
-                    all_extracted_fields.update(yolo_page_result['extracted_fields'])
-                if yolo_page_result.get('general_text'):
-                    all_general_text.extend(yolo_page_result['general_text'])
-                if yolo_page_result.get('found_idcard'):
-                    found_idcard = True
                 
                 # Run PaddleOCR for full text
                 try:
@@ -883,11 +1058,9 @@ def process_pdf(pdf_bytes: bytes, use_openai: bool = False) -> Dict:
                 except Exception as e:
                     print(f"⚠️ PaddleOCR error on page {page_num + 1}: {e}")
             else:
-                # For YOLO, keep BGR format
                 _, img_encoded = cv2.imencode('.png', img_array)
                 img_bytes = img_encoded.tobytes()
                 
-                # Use YOLO + EasyOCR for this page
                 page_result = process_image(img_bytes)
                 if page_result.get('extracted_fields'):
                     all_extracted_fields.update(page_result['extracted_fields'])
@@ -903,7 +1076,6 @@ def process_pdf(pdf_bytes: bytes, use_openai: bool = False) -> Dict:
             "general_text": all_general_text,
             "found_idcard": found_idcard,
             "total_pages": len(page_images),
-            "method": "combined_yolo_tesseract" if use_openai else "yolo_easyocr"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
@@ -951,109 +1123,61 @@ async def ocr_stream(
                 except Exception as e:
                     print(f"Failed to init PaddleOCR: {e}")
 
-            if yolo_model is None:
-                yield f"event: error\ndata: {{\"error\": \"YOLO model not loaded\"}}\n\n"
-                return
+            # Use PaddleOCR for detection and recognition
+            # We can use extract_data which gives us everything we need
             
-            # Decode image
+            # Decode image first (needed for cropping later)
             nparr = np.frombuffer(image_bytes, np.uint8)
             img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             
             if img is None:
                 yield f"event: error\ndata: {{\"error\": \"Failed to decode image\"}}\n\n"
                 return
-            
-            # Run YOLO detection
-            results = yolo_model(img)[0]
-            boxes = results.boxes
-            
-            # Process each detected box and stream results
+
+            import tempfile
+            temp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
+                    tf.write(image_bytes)
+                    temp_path = tf.name
+                
+                print("🔍 Starting PaddleOCR streaming extraction...")
+                paddle_results = paddle_ocr.extract_data(temp_path)
+                print(f"✅ PaddleOCR found {len(paddle_results)} regions for streaming")
+                
+            except Exception as e:
+                print(f"❌ PaddleOCR streaming error: {e}")
+                paddle_results = []
+            finally:
+                if temp_path and os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except:
+                        pass
+
             regions = []
             region_idx = 0
             
-            # Process class 1-15 (ID card fields) first, then class 0 (general text)
-            all_boxes = []
-            for box in boxes:
-                class_id = int(box.cls[0])
-                if class_id >= 1:  # ID card fields
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    all_boxes.append((class_id, x1, y1, x2, y2, 'field'))
-            
-            for box in boxes:
-                class_id = int(box.cls[0])
-                if class_id == 0:  # General text
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    all_boxes.append((class_id, x1, y1, x2, y2, 'general'))
-            
-            # Apply NMS to all boxes
-            raw_boxes = [(x1, y1, x2, y2) for (_, x1, y1, x2, y2, _) in all_boxes]
-            filtered_boxes_coords = non_max_suppression_area(raw_boxes) if raw_boxes else []
-            
-            # Filter all_boxes to keep only those in filtered set
-            filtered_boxes = []
-            for (class_id, x1, y1, x2, y2, box_type) in all_boxes:
-                if (x1, y1, x2, y2) in filtered_boxes_coords:
-                    filtered_boxes.append((class_id, x1, y1, x2, y2, box_type))
-            
-            # Process each filtered box
-            for (class_id, x1, y1, x2, y2, box_type) in filtered_boxes:
+            for item in paddle_results:
                 try:
-                    # Crop region
-                    crop = img[y1:y2, x1:x2]
+                    text = item['text']
+                    confidence = item['confidence']
+                    box = item['box'] # [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
                     
-                    # Encode crop as bytes
+                    # Convert polygon box to rect [x, y, w, h]
+                    xs = [p[0] for p in box]
+                    ys = [p[1] for p in box]
+                    x1, y1 = int(min(xs)), int(min(ys))
+                    x2, y2 = int(max(xs)), int(max(ys))
+                    w, h = x2 - x1, y2 - y1
+                    
+                    # Crop for quality metrics (optional, but good for consistency)
+                    crop = img[y1:y2, x1:x2]
                     _, crop_encoded = cv2.imencode('.png', crop)
                     crop_bytes = crop_encoded.tobytes()
                     
-                    text = ""
-                    avg_ocr_conf = 0.0
-                    ocr_method_used = 'easyocr'
-                    
-                    # Run OCR based on selection
-                    if use_trocr and trocr_ocr:
-                        try:
-                            text = trocr_ocr.extract_text_from_image(crop)
-                            avg_ocr_conf = 0.85 # TrOCR is usually reliable
-                            ocr_method_used = 'trocr'
-                        except Exception as e:
-                            print(f"TrOCR error on region: {e}")
-                            # Fallback
-                            pass
-                            
-                    if not text and use_openai and paddle_ocr:
-                        try:
-                            # Save crop to temp file for Paddle
-                            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
-                                cv2.imwrite(tf.name, crop)
-                                temp_path = tf.name
-                            
-                            text = paddle_ocr.extract_text(temp_path)
-                            avg_ocr_conf = 0.9 # Paddle high confidence
-                            ocr_method_used = 'paddle'
-                            
-                            try:
-                                os.remove(temp_path)
-                            except:
-                                pass
-                        except Exception as e:
-                            print(f"PaddleOCR error on region: {e}")
-                            pass
-
-                    if not text:
-                        # Default to EasyOCR
-                        if ocr_reader:
-                            ocr_result = ocr_reader.readtext(crop)
-                            text_parts = []
-                            ocr_confidences = []
-                            for detection in ocr_result:
-                                if len(detection) >= 2:
-                                    text_parts.append(str(detection[1]))
-                                    if len(detection) >= 3:
-                                        ocr_confidences.append(float(detection[2]))
-                            
-                            text = " ".join(text_parts).strip()
-                            avg_ocr_conf = sum(ocr_confidences) / len(ocr_confidences) if ocr_confidences else 0.7
-                            ocr_method_used = 'easyocr'
+                    ocr_method_used = 'paddle'
+                    avg_ocr_conf = confidence
                     
                     # Compute confidence using ocr_confidence module
                     confidence_data = ocr_confidence.get_region_confidence(
@@ -1097,10 +1221,26 @@ async def ocr_stream(
             # Cache regions for later correction
             region_data_cache[image_id] = regions
             
-            # Send final done event
+            # Aggregate text from all regions
+            all_text_lines = [r['text'] for r in regions if r['text'].strip()]
+            full_text = "\n".join(all_text_lines)
+            
+            # Parse text into structured fields
+            extracted_fields, extracted_metadata = parse_text_to_json_advanced(full_text)
+            
+            # Send final done event with full data
             done_data = {
                 "document_confidence": doc_confidence,
-                "total_regions": len(regions)
+                "total_regions": len(regions),
+                "extracted_fields": extracted_fields,
+                "extracted_metadata": extracted_metadata,
+                "general_text": all_text_lines,
+                "success": True,
+                "quality": {
+                    "overall_score": doc_confidence * 100,
+                    "blur_score": sum(r['blur_score'] for r in regions) / len(regions) if regions else 0,
+                    "lighting_score": sum(r['lighting_score'] for r in regions) / len(regions) if regions else 0
+                }
             }
             done_json = json.dumps(done_data)
             yield f"event: done\ndata: {done_json}\n\n"
@@ -1170,109 +1310,57 @@ async def region_correct(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def parse_text_to_json_advanced(text: str, blocks_data: List[Dict] = None) -> Dict:
-    """
-    Advanced parsing of extracted text into structured JSON format
-    Uses both pattern matching and block-based extraction with fuzzy matching
-    """
-    import difflib
-    
-    result = {}
-    lines = text.split('\n')
-    
-    # Enhanced field patterns with better matching
-    patterns = language_loader.get_regex_patterns()
-    
-    # Standard fields we expect
-    # ORDER MATTERS! Put specific keys before general ones to prevent partial match overwrites
-    STANDARD_FIELDS = {
-        'Address Line 1': ['address line 1', 'address line 1', 'road', 'street', 'address line !'],
-        'Address Line 2': ['address line 2', 'address line 2', 'area', 'layout'],
-        'Address': ['address', 'address line', 'residence'],
-        'First Name': ['first name', 'given name', 'forename'],
-        'Middle Name': ['middle name', 'midde name', 'second name'],
-        'Last Name': ['last name', 'surname', 'family name', 'is a man'], 
-        'Gender': ['gender', 'sex', 'brender', 'cender'], # 'cender' is a common typo
-        'Date of Birth': ['date of birth', 'dob', 'birth date'],
-        'City': ['city', 'town', 'district'],
-        'State': ['state', 'province', 'stale'], 
-        'Pin Code': ['pin code', 'pincode', 'zip code', 'postal code', 'pincade'],
-        'Phone No': ['phone', 'mobile', 'contact', 'cell', 'phone member', 'phone number'],
-        'Email': ['email', 'e-mail', 'mail', 'email id']
-    }
-    
-    # Helper to find closest standard key
-    def get_standard_key(ocr_key):
-        ocr_key = ocr_key.lower().strip()
-        
-        best_match = None
-        max_len = 0
-        
-        # Direct check with "best match" logic (longest matching variation wins)
-        for std_key, variations in STANDARD_FIELDS.items():
-            if ocr_key in variations:
-                return std_key
-            for var in variations:
-                if var in ocr_key:
-                    # Found a substring match.
-                    # If we already have a match, check if this one is "better" (longer specific match)
-                    # e.g. "address line 1" (len 14) is better than "address" (len 7) for input "address line 1"
-                    if len(var) > max_len:
-                        max_len = len(var)
-                        best_match = std_key
-        
-        if best_match:
-            return best_match
-        
-        # Fuzzy check
-        all_variations = []
-        for variations in STANDARD_FIELDS.values():
-            all_variations.extend(variations)
-            
-        matches = difflib.get_close_matches(ocr_key, all_variations, n=1, cutoff=0.7)
-        if matches:
-            match = matches[0]
-            for std_key, variations in STANDARD_FIELDS.items():
-                if match in variations:
-                    return std_key
-        return None
 
-    # Line-by-line extraction with fuzzy key matching
-    for line in lines:
-        if ':' in line:
-            parts = line.split(':', 1)
-            if len(parts) == 2:
-                key_raw = parts[0].strip()
-                value = parts[1].strip()
-                
-                # Clean value
-                # Remove quotes and trailing punctuation
-                value = value.replace('"', '').replace("'", "").strip(" .,!")
-                
-                # Fix common OCR typos in values
-                val_lower = value.lower()
-                
-                # Email fixes
-                if 'gmail' in val_lower or 'yahoo' in val_lower or 'hotmail' in val_lower or 'gymail' in val_lower or 'great-com' in val_lower:
-                    value = value.replace('Gymail', 'gmail').replace('gymail', 'gmail')
-                    value = value.replace('great-com', 'gmail.com') 
-                    value = value.replace('-com', '.com').replace(' com', '.com')
-                    value = value.replace(' ', '') 
-                    if '@' not in value and 'gmail' in value:
-                        value = value.replace('gmail', '@gmail')
-                
-                # Find standard key
-                std_key = get_standard_key(key_raw)
-                
-                if std_key:
-                    result[std_key] = value
-                else:
-                    # Keep original key if no match found, but clean it
-                    clean_key = key_raw.title().replace('_', ' ')
-                    result[clean_key] = value
 
-    return result
 
+def extract_text_with_paddle(image_bytes: bytes) -> str:
+    global paddle_ocr
+    if paddle_ocr is None:
+        print("Initializing PaddleOCR...")
+        paddle_ocr = PaddleOCRWrapper(lang=SELECTED_LANGUAGE if SELECTED_LANGUAGE in ['en', 'ch', 'fr', 'german', 'korean', 'japan'] else 'en')
+    
+    import tempfile
+    import os
+    
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
+            tf.write(image_bytes)
+            temp_path = tf.name
+        
+        return paddle_ocr.extract_text(temp_path)
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+
+
+def extract_text_with_tesseract(image_bytes: bytes) -> str:
+    try:
+        import pytesseract
+        from PIL import Image
+        import io
+        
+        image = Image.open(io.BytesIO(image_bytes))
+        return pytesseract.image_to_string(image)
+    except ImportError:
+        print("pytesseract not installed")
+        return ""
+    except Exception as e:
+        print(f"Tesseract error: {e}")
+        return ""
+
+def parse_trocr_direct(text: str, confidence: float) -> Tuple[Dict, Dict]:
+    extracted_fields, extracted_metadata = parse_text_to_json_advanced(text)
+    
+    # Create field confidences dict
+    field_confidences = {}
+    for key in extracted_fields:
+        field_confidences[key] = confidence
+        
+    return extracted_fields, field_confidences
 
 @app.post("/api/upload")
 async def upload_image(
@@ -1290,9 +1378,7 @@ async def upload_image(
     sys.stderr.flush()
     
     try:
-        print("\n" + "=" * 70)
-        print("UPLOAD REQUEST RECEIVED - NEW CODE VERSION")
-        print("=" * 70)
+        print("UPLOAD REQUEST RECEIVED")
         sys.stdout.flush()
         
         contents = await file.read()
@@ -1373,17 +1459,20 @@ async def upload_image(
             
             # Run TrOCR for handwritten text
             try:
-                trocr_text = extract_text_with_trocr(contents)
+                trocr_text, trocr_confidences = extract_text_with_trocr(contents)
                 print(f"✅ TrOCR extracted {len(trocr_text)} chars")
                 
-                # Parse the extracted text into structured fields
-                parsed_fields = parse_text_to_json_advanced(trocr_text)
+                # Parse the extracted text using direct parser (preserves raw extraction)
+                parsed_fields, field_confidences = parse_trocr_direct(trocr_text, trocr_confidences)
+                parsed_metadata = {}  # TrOCR doesn't need metadata
                 
                 # Return TrOCR results
                 return JSONResponse(content={
                     "success": True,
                     "filename": filename,
                     "extracted_fields": parsed_fields,
+                    "extracted_metadata": parsed_metadata,
+                    "field_confidence": field_confidences,
                     "general_text": [trocr_text],
                     "trocr_text": trocr_text,
                     "found_idcard": len(parsed_fields) > 0,
@@ -1405,11 +1494,8 @@ async def upload_image(
         
         # Process image with BOTH methods when PaddleOCR is enabled  
         if use_openai_flag:
-            print("Using COMBINED OCR: YOLO+EasyOCR + PaddleOCR...")
             sys.stdout.flush()
             
-            # Run YOLO+EasyOCR for structured fields
-            yolo_result = process_image(contents)
             
             # Run PaddleOCR for full text
             try:
@@ -1419,17 +1505,28 @@ async def upload_image(
                 print(f"⚠️ PaddleOCR error: {str(paddle_err)}")
                 paddle_text = ""
             
+            # Parse text into structured fields
+            extracted_fields, extracted_metadata = parse_text_to_json_advanced(paddle_text)
+            
+            # Construct best_result manually
+            best_result = {
+                "extracted_fields": extracted_fields,
+                "extracted_metadata": extracted_metadata,
+                "general_text": [paddle_text] if paddle_text else [],
+                "found_idcard": len(extracted_fields) > 0,
+                "best_method": "paddle",
+                "comparison": "PaddleOCR selected via flag"
+            }
+            
             # Compare and select best result
-            best_result = compare_ocr_results(yolo_result, paddle_text)
-            print(f"🏆 Best OCR method: {best_result.get('best_method', 'unknown')}")
-            print(f"   Comparison: YOLO score={best_result['comparison']['yolo_score']:.1f}, "
-                  f"PaddleOCR score={best_result['comparison']['paddle_score']:.1f}")
+            print(f"🏆 Best OCR method: PaddleOCR")
             
             # Return best result with both options available
             return JSONResponse(content={
                 "success": True,
                 "filename": filename,
                 "extracted_fields": best_result.get("extracted_fields", {}),
+                "extracted_metadata": best_result.get("extracted_metadata", {}),
                 "general_text": best_result.get("general_text", []),
                 "paddle_text": paddle_text,
                 "found_idcard": best_result.get("found_idcard", False),
@@ -1441,18 +1538,16 @@ async def upload_image(
                 "quality": quality_report
             })
         
-        # Regular YOLO + EasyOCR processing
-        print("Processing with YOLO+EasyOCR...")
         sys.stdout.flush()
         try:
             result = process_image(contents)
             result["file_type"] = "image"
-            print("YOLO processing successful")
             sys.stdout.flush()
             return JSONResponse(content={
                 "success": True,
                 "filename": filename,
                 "quality": quality_report,
+                "extracted_metadata": result.get("extracted_metadata", {}),
                 **result
             })
         except Exception as img_err:
@@ -1477,12 +1572,8 @@ async def upload_image(
     except Exception as e:
         error_msg = str(e)
         error_type = type(e).__name__
-        print("\n" + "=" * 70)
-        print(f"EXCEPTION in upload_image: {error_type}")
-        print(f"MESSAGE: {error_msg}")
-        print("TRACEBACK:")
+        print(f"EXCEPTION in upload_image: {error_type}: {error_msg}")
         traceback.print_exc()
-        print("=" * 70 + "\n")
         sys.stdout.flush()
         sys.stderr.flush()
         return JSONResponse(
@@ -1550,10 +1641,7 @@ async def camera_upload(
         use_openai_flag = use_openai and use_openai.lower() == 'true'
         
         if use_openai_flag:
-            print("Using COMBINED OCR: YOLO+EasyOCR + Tesseract...")
             
-            # Run YOLO+EasyOCR for structured fields
-            yolo_result = process_image(contents)
             
             # Run Tesseract for full text
             try:
@@ -1564,14 +1652,10 @@ async def camera_upload(
                 tesseract_text = ""
             
             result = {
-                "extracted_fields": yolo_result.get("extracted_fields", {}),  # From YOLO
-                "general_text": yolo_result.get("general_text", []),  # From YOLO  
                 "tesseract_text": tesseract_text,  # Full text from Tesseract
-                "found_idcard": yolo_result.get("found_idcard", False),
                 "tesseract_converted": True
             }
         else:
-            print("Using YOLO + EasyOCR...")
             result = process_image(contents)
             
         result["file_type"] = "image"
@@ -1752,25 +1836,16 @@ async def autofill_form(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+# Initialize JobFormManager
+from job_form_manager import JobFormManager
+job_manager = JobFormManager()
+
 @app.post("/api/job-form/analyze")
 async def analyze_job_form(form_url: str = Form(...)):
     """Analyze a Google Form and return its questions"""
     try:
-        GoogleFormHandler = get_google_form_handler()
-        if GoogleFormHandler is None:
-            raise HTTPException(status_code=503, detail="Google Form Handler module not available. Please ensure Auto-Job-Form-Filler-Agent folder exists.")
-        form_handler = GoogleFormHandler(url=form_url)
-        questions_df = form_handler.get_form_questions_df(only_required=False)
-        
-        if questions_df.empty:
-            raise HTTPException(status_code=400, detail="Could not parse form. Make sure the form is publicly accessible.")
-        
-        return JSONResponse(content={
-            "success": True,
-            "form_url": form_url,
-            "total_questions": len(questions_df),
-            "questions": questions_df.to_dict(orient="records")
-        })
+        result = job_manager.analyze_form(form_url)
+        return JSONResponse(content=result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1783,65 +1858,12 @@ async def fill_job_form(
     """Fill a job application form with OCR extracted data or AI-powered filling"""
     try:
         extracted = json.loads(extracted_data)
-        
-        # If AI-powered filling is requested, use RAG workflow
-        if use_ai:
-            return await fill_form_with_ai(form_url, extracted)
-        else:
-            # Use simple field matching
-            filler = JobFormFiller()
-            result = filler.fill_form_with_data(form_url, extracted)
-            return JSONResponse(content=result)
+        result = await job_manager.fill_form(form_url, extracted, use_ai)
+        return JSONResponse(content=result)
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-async def fill_form_with_ai(form_url: str, extracted_data: Dict[str, Any]):
-    """Use AI-powered RAG workflow to fill form"""
-    try:
-        # Import RAG workflow
-        try:
-            from rag_workflow_with_human_feedback import RAGWorkflowWithHumanFeedback
-            from llama_index.core.workflow import StartEvent, StopEvent, InputRequiredEvent
-        except ImportError:
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "success": False,
-                    "error": "AI features are not installed. Please install 'llama-index' and related packages to use this feature.",
-                    "install_command": "pip install llama-index llama-parse llama-index-llms-openrouter"
-                }
-            )
-        
-        # Create a temporary resume index from extracted data
-        import tempfile
-        import json as json_lib
-        from pathlib import Path
-        
-        # Convert extracted data to a text format for indexing
-        resume_text = "\n".join([f"{k}: {v}" for k, v in extracted_data.items()])
-        
-        # Create temporary index directory
-        temp_index_dir = tempfile.mkdtemp(prefix="resume_index_")
-        
-        # For now, use simple matching but with AI enhancement
-        # Full RAG workflow requires resume PDF processing
-        filler = JobFormFiller()
-        result = filler.fill_form_with_data(form_url, extracted_data)
-        
-        # Enhance results with AI if possible
-        if result.get("success"):
-            # Add AI enhancement note
-            result["ai_enhanced"] = False
-            result["note"] = "Using intelligent field matching. For full AI-powered filling, upload a resume PDF."
-        
-        return JSONResponse(content=result)
-    except Exception as e:
-        # Fallback to simple matching
-        filler = JobFormFiller()
-        result = filler.fill_form_with_data(form_url, extracted_data)
-        return JSONResponse(content=result)
 
 @app.post("/api/job-form/submit")
 async def submit_job_form(
@@ -1856,14 +1878,8 @@ async def submit_job_form(
         if not isinstance(filled_data, dict):
             raise HTTPException(status_code=400, detail="Form data must be a dictionary")
         
-        filler = JobFormFiller()
-        success = filler.submit_filled_form(form_url, filled_data)
-        
-        return JSONResponse(content={
-            "success": success,
-            "message": "Form submitted successfully" if success else "Form submission failed",
-            "form_url": form_url
-        })
+        result = job_manager.submit_form(form_url, filled_data)
+        return JSONResponse(content=result)
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
     except Exception as e:
@@ -1873,63 +1889,17 @@ async def submit_job_form(
 async def process_resume(file: UploadFile = File(...)):
     """Process a resume PDF and create searchable index"""
     try:
-        import tempfile
-        import sys
-        import os as os_module
-        
-        # Add path for resume processor
-        agent_path = os.path.join(os.path.dirname(__file__), 'Auto-Job-Form-Filler-Agent')
-        if agent_path not in sys.path:
-            sys.path.insert(0, agent_path)
-        
-        try:
-            from resume_processor import ResumeProcessor
-        except ImportError as ie:
-            error_msg = str(ie)
-            if 'llama_parse' in error_msg.lower():
-                return JSONResponse(
-                    status_code=503,
-                    content={
-                        "success": False,
-                        "error": "Resume processing requires llama-parse. Install with: pip install llama-parse llama-index",
-                        "install_command": "pip install llama-parse llama-index"
-                    }
-                )
-            else:
-                return JSONResponse(
-                    status_code=503,
-                    content={
-                        "success": False,
-                        "error": f"Resume processor not available: {error_msg}"
-                    }
-                )
-        
-        # Save uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-            content = await file.read()
-            tmp_file.write(content)
-            tmp_path = tmp_file.name
-        
-        # Process resume
-        processor = ResumeProcessor(
-            storage_dir="resume_indexes",
-            llama_cloud_api_key=LLAMA_CLOUD_API_KEY
-        )
-        
-        result = processor.process_file(tmp_path)
-        
-        # Clean up temp file
-        os.unlink(tmp_path)
+        content = await file.read()
+        result = await job_manager.process_resume(content)
         
         if result.get("success"):
-            return JSONResponse(content={
-                "success": True,
-                "index_location": result["index_location"],
-                "num_nodes": result["num_nodes"],
-                "message": f"Resume processed successfully! Created {result['num_nodes']} searchable sections."
-            })
+            return JSONResponse(content=result)
         else:
-            raise HTTPException(status_code=400, detail=result.get("error", "Failed to process resume"))
+            # Check if it's a 503 service unavailable (missing dependencies)
+            if "install" in result.get("error", "").lower():
+                return JSONResponse(status_code=503, content=result)
+            else:
+                raise HTTPException(status_code=400, detail=result.get("error", "Failed to process resume"))
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1942,71 +1912,8 @@ async def fill_job_form_ai(
 ):
     """Fill job form using AI-powered RAG workflow with resume"""
     try:
-        import asyncio
-        GoogleFormHandler = get_google_form_handler()
-        if GoogleFormHandler is None:
-            raise HTTPException(status_code=503, detail="Google Form Handler module not available. Please ensure Auto-Job-Form-Filler-Agent folder exists.")
-            
-        try:
-            from rag_workflow_with_human_feedback import RAGWorkflowWithHumanFeedback
-            from llama_index.core.workflow import StopEvent
-        except ImportError:
-             return JSONResponse(
-                status_code=503,
-                content={
-                    "success": False,
-                    "error": "AI features are not installed. Please install 'llama-index' and related packages to use this feature.",
-                    "install_command": "pip install llama-index llama-parse llama-index-llms-openrouter"
-                }
-            )
-        
-        # Get form data
-        form_handler = GoogleFormHandler(url=form_url)
-        questions_df = form_handler.get_form_questions_df(only_required=False)
-        form_data = questions_df.to_dict(orient="records")
-        
-        # Use default model if not specified
-        selected_model = model or DEFAULT_MODEL
-        if selected_model not in OPENROUTER_MODELS.values():
-            # Try to find by name
-            selected_model = OPENROUTER_MODELS.get(selected_model, DEFAULT_MODEL)
-        
-        # Create workflow
-        workflow = RAGWorkflowWithHumanFeedback(timeout=1000, verbose=True)
-        
-        # Run workflow
-        handler = workflow.run(
-            resume_index_path=resume_index_path,
-            form_data=form_data,
-            openrouter_key=OPENROUTER_API_KEY,
-            llama_cloud_key=LLAMA_CLOUD_API_KEY,
-            selected_model=selected_model
-        )
-        
-        # Process events
-        final_result = None
-        async for event in handler.stream_events():
-            if isinstance(event, StopEvent):
-                if hasattr(event, 'result') and event.result:
-                    try:
-                        if isinstance(event.result, str):
-                            final_result = json.loads(event.result)
-                        else:
-                            final_result = event.result
-                        break
-                    except:
-                        final_result = {"raw": str(event.result)}
-        
-        # Get final result if not received
-        if not final_result:
-            final_result = await handler
-        
-        return JSONResponse(content={
-            "success": True,
-            "form_data": final_result,
-            "message": "Form filled using AI"
-        })
-        
+        result = await job_manager.fill_form_ai_full(form_url, resume_index_path, model)
+        return JSONResponse(content=result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2014,18 +1921,8 @@ async def fill_job_form_ai(
 async def get_filled_form(form_url: str):
     """Get filled form data (for testing/debugging)"""
     try:
-        GoogleFormHandler = get_google_form_handler()
-        if GoogleFormHandler is None:
-            raise HTTPException(status_code=503, detail="Google Form Handler module not available. Please ensure Auto-Job-Form-Filler-Agent folder exists.")
-        form_handler = GoogleFormHandler(url=form_url)
-        questions_df = form_handler.get_form_questions_df(only_required=False)
-        
-        return JSONResponse(content={
-            "success": True,
-            "form_url": form_url,
-            "questions": questions_df.to_dict(orient="records"),
-            "note": "This endpoint returns form structure. Use /api/job-form/fill to fill with data."
-        })
+        result = job_manager.get_filled_form_structure(form_url)
+        return JSONResponse(content=result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2039,11 +1936,18 @@ async def send_to_mosip(data: Dict[str, Any]):
     
     try:
         extracted_fields = data.get("extracted_fields", {})
+        extracted_metadata = data.get("extracted_metadata", {}) # New: Confidence scores
+        
         if not extracted_fields:
             raise HTTPException(status_code=400, detail="No extracted_fields provided")
         
         # Map OCR data to MOSIP schema
         mosip_data = mosip_mapper.map_to_mosip_schema(extracted_fields)
+        
+        # Map metadata (confidence scores) to MOSIP schema
+        field_confidence = {}
+        if extracted_metadata:
+             field_confidence = mosip_mapper.map_metadata(extracted_metadata)
         
         if not mosip_data:
             raise HTTPException(status_code=400, detail="No valid fields to map to MOSIP schema")
@@ -2064,6 +1968,7 @@ async def send_to_mosip(data: Dict[str, Any]):
         ocr_result = {
             "mosip_data": mosip_data,
             "quality_scores": data.get("quality_scores", {}),
+            "field_confidence": field_confidence, # New: Field-level confidence
             "raw_ocr_data": {"full_text": data.get("raw_text", "")}
         }
         
@@ -2243,7 +2148,6 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "model_loaded": yolo_model is not None,
         "ocr_loaded": ocr_reader is not None
     }
 

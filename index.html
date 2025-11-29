@@ -2624,7 +2624,16 @@
 
         if (data.success) {
           currentJobFormUrl = formUrl;
-
+          if (data.questions && data.questions.length > 0) {
+            const questionTitles = data.questions.map(q => q.Question);
+            const formFieldsTextarea = document.getElementById("formFields");
+            if (formFieldsTextarea) {
+              formFieldsTextarea.value = JSON.stringify(questionTitles, null, 2);
+              // Trigger input event to handle any auto-resizing or validation
+              formFieldsTextarea.dispatchEvent(new Event('input'));
+              console.log("✅ Auto-populated Form Fields from Google Form");
+            }
+          }
           // Display form questions
           const questionsDiv = document.getElementById(
             "formQuestionsDisplay"

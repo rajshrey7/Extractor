@@ -61,6 +61,13 @@ class ConfidenceOverlay {
                 this.documentConfidence = data.document_confidence;
                 this.updateDocumentConfidenceDisplay();
                 this.updateLowConfidenceCTA();
+
+                // Dispatch completion event with full data for the main app
+                const completeEvent = new CustomEvent('ocrStreamComplete', {
+                    detail: data
+                });
+                window.dispatchEvent(completeEvent);
+
                 eventSource.close();
             } catch (e) {
                 console.error('Error parsing done event:', e);

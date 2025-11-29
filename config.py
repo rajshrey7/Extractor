@@ -3,11 +3,7 @@ Configuration file for API keys
 """
 import os
 
-# OpenRouter API Key for AI models (Optional)
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 
-# Llama Cloud API Key for resume parsing (Optional)
-LLAMA_CLOUD_API_KEY = os.getenv("LLAMA_CLOUD_API_KEY", "")
 
 # Available AI models
 OPENROUTER_MODELS = {
@@ -23,10 +19,7 @@ OPENROUTER_MODELS = {
 # Default model
 DEFAULT_MODEL = "gryphe/mythomax-l2-13b"
 
-# Google Vision API Key (Removed - using offline TrOCR)
-# GOOGLE_VISION_API_KEY = "REMOVED"
 
-# OpenAI API Key (deprecated - using Google Vision instead)
 OPENAI_API_KEY = None
 
 # Language Configuration
