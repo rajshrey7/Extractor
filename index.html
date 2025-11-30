@@ -470,7 +470,7 @@
           <p style="color: #666; margin-top: 10px">
             Supports: JPG, PNG, JPEG, PDF
           </p>
-          <input type="file" id="fileInput" accept="image/*,.pdf" />
+          <input type="file" id="fileInput" accept="image/*,image/jpeg,image/png,application/pdf,.pdf" />
         </div>
 
         <!-- Camera Button Section -->
@@ -624,13 +624,12 @@
             </label>
           </div>
           <button class="btn" id="processBtn" onclick="processImage()" disabled>
-            Process Image
+            Process Docs
           </button>
           <br />
           <small style="color: #666; margin-top: 10px; display: block">
             <strong>PaddleOCR:</strong> Uses PaddleOCR engine for offline text extraction.<br />
             <strong>TrOCR:</strong> Optimized for handwritten text recognition.<br />
-            <strong>YOLO+EasyOCR:</strong> Uses your trained YOLO model for field detection (default).
           </small>
         </div>
 
@@ -1635,10 +1634,12 @@
         document.getElementById("verifyLoading").classList.remove("show");
       }
     }
-
     // Global variable to store data pending quality check
     let pendingOCRData = null;
 
+    // Global variables to store TrOCR confidence scores and metadata
+    let trocrConfidenceScores = {};
+    let extractedMetadata = {};
     window.handleUploadSuccess = function (data) {
       // Check if quality report exists
       if (data.quality) {
@@ -1816,6 +1817,24 @@
           debug: "No fields extracted from image",
         };
       }
+      // Capture TrOCR confidence scores if available
+      if (data.trocr_confidence) {
+        trocrConfidenceScores = data.trocr_confidence;
+        console.log('📊 TrOCR Confidence Scores:', trocrConfidenceScores);
+      } else {
+        trocrConfidenceScores = {};
+      }
+      // Capture extracted metadata
+      if (data.extracted_metadata) {
+        extractedMetadata = data.extracted_metadata;
+        console.log('📋 Extracted Metadata:', extractedMetadata);
+      } else {
+        extractedMetadata = {};
+      }
+      // Store quality scores globally for MOSIP
+      if (data.quality) {
+        window.lastQualityScores = data.quality;
+      }
 
       // Format JSON with proper indentation
       const jsonString = JSON.stringify(extractedFields, null, 2);
@@ -1833,17 +1852,37 @@
       // Display extracted fields in formatted view
       const fieldsDiv = document.getElementById("extractedFields");
       fieldsDiv.innerHTML = "";
-
       if (Object.keys(data.extracted_fields).length > 0) {
-        for (const [field, value] of Object.entries(
-          data.extracted_fields
-        )) {
+        for (const [field, value] of Object.entries(data.extracted_fields)) {
           const fieldItem = document.createElement("div");
           fieldItem.className = "field-item";
+
+          // Build confidence badges
+          let confidenceBadges = '';
+
+          // TrOCR confidence (if available)
+          if (trocrConfidenceScores[field] !== undefined) {
+            const trocrConf = (trocrConfidenceScores[field] * 100).toFixed(1);
+            let badgeClass = 'confidence-low';
+            if (trocrConf >= 85) badgeClass = 'confidence-high';
+            else if (trocrConf >= 60) badgeClass = 'confidence-medium';
+
+            confidenceBadges += `
+              <span class="confidence-badge ${badgeClass}" 
+                    style="margin-left: 10px; font-size: 0.85em; padding: 3px 8px;"
+                    title="TrOCR Confidence Score">
+                TrOCR: ${trocrConf}%
+              </span>
+            `;
+          }
+
+
+
           fieldItem.innerHTML = `
-                            <span class="field-label">${field}:</span>
-                            <span class="field-value">${value}</span>
-                        `;
+            <span class="field-label">${field}:</span>
+            <span class="field-value">${value}</span>
+            ${confidenceBadges}
+          `;
           fieldsDiv.appendChild(fieldItem);
         }
       } else {
@@ -2242,9 +2281,32 @@
         for (const [field, value] of Object.entries(correctedData)) {
           const fieldItem = document.createElement("div");
           fieldItem.className = "field-item";
+
+          // Build confidence badges
+          let confidenceBadges = '';
+
+          // TrOCR confidence (if available)
+          if (trocrConfidenceScores[field] !== undefined) {
+            const trocrConf = (trocrConfidenceScores[field] * 100).toFixed(1);
+            let badgeClass = 'confidence-low';
+            if (trocrConf >= 85) badgeClass = 'confidence-high';
+            else if (trocrConf >= 60) badgeClass = 'confidence-medium';
+
+            confidenceBadges += `
+              <span class="confidence-badge ${badgeClass}" 
+                    style="margin-left: 10px; font-size: 0.85em; padding: 3px 8px;"
+                    title="TrOCR Confidence Score">
+                TrOCR: ${trocrConf}%
+              </span>
+            `;
+          }
+
+
+
           fieldItem.innerHTML = `
             <span class="field-label">${field}:</span>
             <span class="field-value">${value}</span>
+            ${confidenceBadges}
           `;
           fieldsDiv.appendChild(fieldItem);
         }
@@ -3478,9 +3540,11 @@
           extracted_fields: extractedData,
           quality_scores: window.lastQualityScores || {},
           raw_text: document.getElementById('generalText')?.textContent || '',
-          ocr_metadata: {
+          extracted_metadata: {
             timestamp: new Date().toISOString(),
-            field_count: Object.keys(extractedData).length
+            field_count: Object.keys(extractedData).length,
+            trocr_confidence: trocrConfidenceScores,
+            field_metadata: extractedMetadata
           }
         })
       })

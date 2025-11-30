@@ -426,20 +426,11 @@ def extract_text_with_trocr(image_bytes: bytes) -> Tuple[str, Dict[str, float]]:
         traceback.print_exc()
         return "", {}
 
-def parse_trocr_direct(text: str, line_confidences: Dict[str, float] = None) -> Tuple[Dict, Dict]:
+def parse_trocr_direct_v2(text: str, line_confidences: Dict[str, float] = None) -> Tuple[Dict, Dict]:
     """
     Direct parser for TrOCR extracted text - returns exactly what was extracted
     without regex cleaning or normalization. Preserves the raw OCR output.
     Also maps confidence scores to fields.
-    
-    Example input:
-        "First name : Abigail
-         middle name : produce
-         Last name : summer"
-    
-    Output: 
-        fields: {"Name": "Abigail", "Middle Name": "produce", "Last Name": "summer"}
-        confidences: {"Name": 0.96, "Middle Name": 0.79, "Last Name": 0.76}
     """
     import re
     
@@ -449,98 +440,115 @@ def parse_trocr_direct(text: str, line_confidences: Dict[str, float] = None) -> 
     if line_confidences is None:
         line_confidences = {}
     
-    # Field name normalization map - handles common OCR mistakes
+    # Field name normalization map
     field_normalization = {
-        'first name': 'Name',
-        'name': 'Name',
-        'full name': 'Name',
-        'given name': 'Name',
+        # Name variations
+        'first name': 'Name', 'name': 'Name', 'full name': 'Name', 'given name': 'Name',
+        'middle name': 'Middle Name', 'midde name': 'Middle Name',
+        'last name': 'Last Name', 'surname': 'Last Name', 'family name': 'Last Name',
         
-        'middle name': 'Middle Name',
-        'midde name': 'Middle Name',
+        # Personal Details
+        'gender': 'Gender', 'cender': 'Gender', 'brender': 'Gender', 'sender': 'Gender', 'sex': 'Gender',
+        'date of birth': 'Date of Birth', 'dob': 'Date of Birth', 'birth date': 'Date of Birth',
+        'nationality': 'Nationality', 'citizenship': 'Nationality',
+        'religion': 'Religion', 'occupation': 'Occupation', 'marital status': 'Marital Status',
+        'place of birth': 'Place of Birth', 'pob': 'Place of Birth',
         
-        'last name': 'Last Name',
-        'surname': 'Last Name',
-        'family name': 'Last Name',
+        # ID Numbers
+        'passport no': 'Passport Number', 'passport number': 'Passport Number',
+        'id number': 'ID Number', 'identity number': 'ID Number', 'card number': 'Card Number',
+        'license number': 'License Number', 'dl no': 'License Number', 'driver license': 'License Number',
+        'pan': 'PAN', 'aadhaar': 'Aadhaar', 'ssn': 'SSN',
         
-        'gender': 'Gender',
-        'cender': 'Gender',  # Common OCR mistake
-        'brender': 'Gender',
-        'sender': 'Gender',
-        'sex': 'Gender',
+        # Dates
+        'issue date': 'Issue Date', 'date of issue': 'Issue Date',
+        'expiry date': 'Expiry Date', 'date of expiry': 'Expiry Date', 'valid until': 'Expiry Date', 'valid thru': 'Expiry Date',
         
-        'date of birth': 'Date of Birth',
-        'dob': 'Date of Birth',
-        'birth date': 'Date of Birth',
+        # Family
+        'father name': 'Father Name', 'fathers name': 'Father Name',
+        'mother name': 'Mother Name', 'mothers name': 'Mother Name',
+        'spouse name': 'Spouse Name', 'husband name': 'Spouse Name', 'wife name': 'Spouse Name',
         
-        'address line !': 'Address Line 1',  # OCR mistake for "1"
-        'address line 1': 'Address Line 1',
-        'road': 'Address Line 1',
-        'street': 'Address Line 1',
+        # Physical
+        'height': 'Height', 'weight': 'Weight', 'eye color': 'Eye Color', 'hair color': 'Hair Color', 'blood group': 'Blood Group',
         
-        'address line 2': 'Address Line 2',
-        'area': 'Address Line 2',
-        'layout': 'Address Line 2',
+        # Address
+        'address line !': 'Address Line 1', 'address line 1': 'Address Line 1', 'road': 'Address Line 1', 'street': 'Address Line 1',
+        'address line 2': 'Address Line 2', 'area': 'Address Line 2', 'layout': 'Address Line 2',
+        'city': 'City', 'town': 'City',
+        'state': 'State', 'province': 'State', 'stale': 'State',
+        'country': 'Country',
+        'pin code': 'Pin Code', 'pincode': 'Pin Code', 'zip code': 'Pin Code', 'postal code': 'Pin Code',
         
-        'city': 'City',
-        'town': 'City',
+        # Contact
+        'phone number': 'Phone', 'phone': 'Phone', 'mobile': 'Phone', 'contact': 'Phone',
+        'email id': 'Email', 'email': 'Email', 'e-mail': 'Email',
         
-        'state': 'State',
-        'province': 'State',
-        'stale': 'State',  # OCR mistake
-        
-        'pin code': 'Pin Code',
-        'pincode': 'Pin Code',
-        'zip code': 'Pin Code',
-        'postal code': 'Pin Code',
-        
-        'phone number': 'Phone',
-        'phone': 'Phone',
-        'mobile': 'Phone',
-        'contact': 'Phone',
-        
-        'email id': 'Email',
-        'email': 'Email',
-        'e-mail': 'Email',
+        # Authority
+        'authority': 'Authority', 'issuing authority': 'Authority', 'place of issue': 'Place of Issue',
     }
     
     lines = text.strip().split('\n')
     for line in lines:
+        original_line = line
         line = line.strip()
         if not line:
             continue
             
-        # Look for pattern "field : value" or "field: value"
-        # More flexible - handles multiple colons, spaces
+        field_name = None
+        field_value = None
+        
         if ':' in line:
-            parts = line.split(':', 1)  # Split on first colon only
+            parts = line.split(':', 1)
             if len(parts) == 2:
                 field_name = parts[0].strip().lower()
                 field_value = parts[1].strip()
-                
-                # Normalize the field name
+        else:
+            # Fallback: Check if line starts with a known field name (space separated)
+            line_lower = line.lower()
+            # Sort keys by length descending to match longest fields first (e.g. "address line 1" before "address")
+            sorted_keys = sorted(field_normalization.keys(), key=len, reverse=True)
+            
+            for key in sorted_keys:
+                if line_lower.startswith(key + ' ') or line_lower == key:
+                    field_name = key
+                    # Extract value: everything after the key
+                    # Use case-insensitive replacement or slicing
+                    field_value = line[len(key):].strip()
+                    break
+        
+        if field_name and field_value:
                 normalized_field = field_normalization.get(field_name, field_name.title())
-                
-                # Clean up common OCR artifacts in values
-                # Remove extra spaces, but preserve multi-word values
                 field_value = ' '.join(field_value.split())
                 
-                # Fix email artifacts (e.g., "AbigailO great-com" -> "AbigailO@gmail.com")
                 if normalized_field == 'Email' and '@' not in field_value:
-                    # Common OCR mistakes:  "@" becomes "O" or "a"
                     field_value = field_value.replace(' great-com', '@gmail.com')
                     field_value = field_value.replace(' great', '@gmail')
-                    field_value = field_value.replace('O@', '@')  # Remove O before @
+                    field_value = field_value.replace('O@', '@')
                     
                 result[normalized_field] = field_value
                 
                 # Map confidence score
-                # Try to find exact line match first
+                matched_confidence = None
+                
+                # 1. Exact match
                 if line in line_confidences:
-                    field_confidences[normalized_field] = line_confidences[line]
-                # Fallback: try to match by value
+                    matched_confidence = line_confidences[line]
+                # 2. Original line match
+                elif original_line.strip() in line_confidences:
+                    matched_confidence = line_confidences[original_line.strip()]
+                # 3. Fuzzy match by field name
                 else:
-                    # Default confidence if not found
+                    for conf_line, conf_value in line_confidences.items():
+                        if ':' in conf_line:
+                            conf_field_name = conf_line.split(':', 1)[0].strip().lower()
+                            if conf_field_name == field_name:
+                                matched_confidence = conf_value
+                                break
+                
+                if matched_confidence is not None:
+                    field_confidences[normalized_field] = matched_confidence
+                else:
                     field_confidences[normalized_field] = 0.85
     
     return result, field_confidences
@@ -1459,20 +1467,23 @@ async def upload_image(
             
             # Run TrOCR for handwritten text
             try:
-                trocr_text, trocr_confidences = extract_text_with_trocr(contents)
-                print(f"✅ TrOCR extracted {len(trocr_text)} chars")
+                trocr_text, trocr_line_confidences = extract_text_with_trocr(contents)
+                print(f"✅ TrOCR extracted {len(trocr_text)} chars for handwritten text")
+                print(f"🔍 Raw line confidences: {trocr_line_confidences}")
                 
-                # Parse the extracted text using direct parser (preserves raw extraction)
-                parsed_fields, field_confidences = parse_trocr_direct(trocr_text, trocr_confidences)
+                # Parse the extracted text using v2 parser (with improved confidence mapping)
+                parsed_fields, field_confidences = parse_trocr_direct_v2(trocr_text, trocr_line_confidences)
+                print(f"🔍 Parsed field confidences: {field_confidences}")
+                
                 parsed_metadata = {}  # TrOCR doesn't need metadata
                 
-                # Return TrOCR results
+                # Return TrOCR results with proper confidence format
                 return JSONResponse(content={
                     "success": True,
                     "filename": filename,
                     "extracted_fields": parsed_fields,
                     "extracted_metadata": parsed_metadata,
-                    "field_confidence": field_confidences,
+                    "trocr_confidence": field_confidences,  # Changed from field_confidence to trocr_confidence
                     "general_text": [trocr_text],
                     "trocr_text": trocr_text,
                     "found_idcard": len(parsed_fields) > 0,
@@ -1505,8 +1516,53 @@ async def upload_image(
                 print(f"⚠️ PaddleOCR error: {str(paddle_err)}")
                 paddle_text = ""
             
+            # Also run TrOCR to calculate confidence scores for printed text
+            trocr_confidences = {}
+            try:
+                print("🔍 Running TrOCR for confidence scoring on printed text...")
+                trocr_text, trocr_line_confidences = extract_text_with_trocr(contents)
+                print(f"✅ TrOCR extracted {len(trocr_text)} chars for confidence calculation")
+                print(f"🔍 Raw line confidences: {trocr_line_confidences}")
+                
+                # Parse TrOCR results to get field-level confidences
+                trocr_fields, trocr_field_confidences = parse_trocr_direct_v2(trocr_text, trocr_line_confidences)
+                print(f"🔍 Parsed field confidences: {trocr_field_confidences}")
+                
+                # Extract just the numeric confidence values
+                # trocr_field_confidences should be {field_name: confidence_value}
+                for field_name, conf_value in trocr_field_confidences.items():
+                    # If conf_value is a dict (wrong format), try to extract a number
+                    if isinstance(conf_value, dict):
+                        # Try to find a numeric value in the dict
+                        # This handles cases where the confidence is nested
+                        numeric_values = [v for v in conf_value.values() if isinstance(v, (int, float))]
+                        if numeric_values:
+                            trocr_confidences[field_name] = max(numeric_values)  # Use the highest confidence
+                        else:
+                            trocr_confidences[field_name] = 0.85  # Default
+                    elif isinstance(conf_value, (int, float)):
+                        trocr_confidences[field_name] = conf_value
+                    else:
+                        trocr_confidences[field_name] = 0.85  # Default
+                
+                print(f"📊 TrOCR confidence scores: {trocr_confidences}")
+            except Exception as trocr_err:
+                print(f"⚠️ TrOCR confidence calculation error: {str(trocr_err)}")
+                import traceback
+                traceback.print_exc()
+                # Continue without TrOCR confidence scores
+            
             # Parse text into structured fields
             extracted_fields, extracted_metadata = parse_text_to_json_advanced(paddle_text)
+            
+            # Merge TrOCR confidence scores into metadata
+            # For each field extracted by PaddleOCR, add TrOCR confidence if available
+            for field_name in extracted_fields:
+                if field_name in trocr_confidences:
+                    # Update metadata with TrOCR confidence (just the numeric value)
+                    if field_name not in extracted_metadata:
+                        extracted_metadata[field_name] = {}
+                    extracted_metadata[field_name]['trocr_confidence'] = trocr_confidences[field_name]
             
             # Construct best_result manually
             best_result = {
@@ -1527,6 +1583,7 @@ async def upload_image(
                 "filename": filename,
                 "extracted_fields": best_result.get("extracted_fields", {}),
                 "extracted_metadata": best_result.get("extracted_metadata", {}),
+                "trocr_confidence": trocr_confidences,  # Add TrOCR confidence scores
                 "general_text": best_result.get("general_text", []),
                 "paddle_text": paddle_text,
                 "found_idcard": best_result.get("found_idcard", False),
@@ -1945,9 +2002,38 @@ async def send_to_mosip(data: Dict[str, Any]):
         mosip_data = mosip_mapper.map_to_mosip_schema(extracted_fields)
         
         # Map metadata (confidence scores) to MOSIP schema
+       # Build comprehensive field confidence map
         field_confidence = {}
         if extracted_metadata:
-             field_confidence = mosip_mapper.map_metadata(extracted_metadata)
+            # Extract TrOCR confidence scores
+            trocr_conf = extracted_metadata.get('trocr_confidence', {})
+            field_metadata = extracted_metadata.get('field_metadata', {})
+            
+            # Combine TrOCR and regular confidence scores
+            for field_name in extracted_fields.keys():
+                field_confidence[field_name] = {}
+                
+                # Add TrOCR confidence if available
+                if field_name in trocr_conf:
+                    field_confidence[field_name]['trocr_confidence'] = trocr_conf[field_name]
+                
+
+                
+                # Add any other metadata
+                if field_name in field_metadata:
+                    for key, value in field_metadata[field_name].items():
+                        if key != 'confidence':
+                            field_confidence[field_name][key] = value
+            
+            # Also try mapping through mosip_mapper if it exists
+            try:
+                mapped_metadata = mosip_mapper.map_metadata(extracted_metadata)
+                for field, meta in mapped_metadata.items():
+                    if field not in field_confidence:
+                        field_confidence[field] = {}
+                    field_confidence[field].update(meta)
+            except Exception as e:
+                print(f"Warning: Could not map metadata: {e}")
         
         if not mosip_data:
             raise HTTPException(status_code=400, detail="No valid fields to map to MOSIP schema")
