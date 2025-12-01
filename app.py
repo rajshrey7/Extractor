@@ -47,7 +47,7 @@ _original_path = sys.path.copy()
 
 # Lazy import function - only adds path when needed
 def get_google_form_handler():
-    _agent_path = os.path.join(os.path.dirname(__file__), 'Auto-Job-Form-Filler-Agent')
+    _agent_path = os.path.dirname(__file__)
     
     if not os.path.exists(_agent_path):
         return None
@@ -108,8 +108,15 @@ def initialize_models():
     if paddle_ocr is None:
         try:
             print("📦 Initializing PaddleOCR...")
-            paddle_ocr = PaddleOCRWrapper(lang=SELECTED_LANGUAGE if SELECTED_LANGUAGE in ['en', 'ch', 'fr', 'german', 'korean', 'japan'] else 'en')
-            print("✅ PaddleOCR initialized successfully!")
+            # Map language codes to PaddleOCR format
+            lang_map = {
+                'en': 'en',
+                'ar': 'arabic',
+                'hi': 'devanagari'
+            }
+            ocr_lang = lang_map.get(SELECTED_LANGUAGE, 'en')
+            paddle_ocr = PaddleOCRWrapper(lang=ocr_lang)
+            print(f"✅ PaddleOCR initialized successfully with language: {ocr_lang}")
         except Exception as e:
             print(f"❌ Error initializing PaddleOCR: {e}")
             paddle_ocr = None

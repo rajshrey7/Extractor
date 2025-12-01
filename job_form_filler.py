@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # Add Auto-Job-Form-Filler-Agent to path to use original modules
-_agent_path = os.path.join(os.path.dirname(__file__), 'Auto-Job-Form-Filler-Agent')
+_agent_path = os.path.dirname(__file__)
 GoogleFormHandler = None
 
 # Try to import GoogleFormHandler if the module exists
@@ -308,7 +308,7 @@ class JobFormFiller:
         if GoogleFormHandler is None:
             return {
                 "success": False,
-                "error": "Google Form Handler module not available. Please ensure Auto-Job-Form-Filler-Agent folder exists."
+                "error": "Google Form Handler module not available. Please ensure google_form_handler.py exists."
             }
         
         self.form_handler = GoogleFormHandler(url=form_url)
@@ -468,7 +468,7 @@ class JobFormFiller:
         
         if GoogleFormHandler is None:
             logger.error("GoogleFormHandler module is not available!")
-            raise Exception("Google Form Handler module not available. Please ensure Auto-Job-Form-Filler-Agent folder exists.")
+            raise Exception("Google Form Handler module not available. Please ensure google_form_handler.py exists.")
         
         try:
             if not self.form_handler or self.form_handler.url != form_url:

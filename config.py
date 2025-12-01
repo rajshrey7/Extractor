@@ -4,7 +4,7 @@ Configuration file for application settings
 import os
 
 # Language Configuration
-SUPPORTED_LANGUAGES = ["en", "ar"]
+SUPPORTED_LANGUAGES = ["en", "ar", "hi"]
 SELECTED_LANGUAGE = "en"
 
 # MOSIP Pre-Registration Configuration

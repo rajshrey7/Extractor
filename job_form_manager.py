@@ -20,7 +20,7 @@ except ImportError:
 
 class JobFormManager:
     def __init__(self):
-        self.agent_path = os.path.join(os.path.dirname(__file__), 'Auto-Job-Form-Filler-Agent')
+        self.agent_path = os.path.dirname(__file__)
         self._ensure_agent_path()
 
     def _ensure_agent_path(self):
@@ -41,7 +41,7 @@ class JobFormManager:
         """Analyze a Google Form and return its questions"""
         GoogleFormHandler = self._get_google_form_handler()
         if GoogleFormHandler is None:
-            raise Exception("Google Form Handler module not available. Please ensure Auto-Job-Form-Filler-Agent folder exists.")
+            raise Exception("Google Form Handler module not available. Please ensure google_form_handler.py exists.")
         
         try:
             form_handler = GoogleFormHandler(url=form_url)
