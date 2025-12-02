@@ -259,7 +259,6 @@ class LanguageLoader:
         "en": {
             "Name": [
                 r'(?:name|full name|first name|given name|given)[\s:]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
-                r'^([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)$',
                 r'Name[\s:]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)'
             ],
             "Surname": [
@@ -448,7 +447,7 @@ class LanguageLoader:
             'Age': ['age'],
             'Date of Birth': ['dob', 'date of birth', 'birthdate', 'birth date', 'date_of_birth'],
             'Phone': ['phone', 'mobile', 'phone number', 'contact', 'mobile number', 'telephone', 'contact number'],
-            'Email': ['email', 'e-mail', 'email address', 'mail'],
+            'Email': ['email', 'e-mail', 'email address', 'mail', 'email id'],
             'Personal No': ['id', 'id number', 'aadhaar', 'pan', 'personal no', 'personal number', 'national id'],
             'Passport No': ['passport', 'passport no', 'passport number', 'document no', 'document number'],
             'Card No': ['card no', 'card number', 'driving license', 'license number'],

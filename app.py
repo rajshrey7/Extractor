@@ -23,6 +23,7 @@ from config import SELECTED_LANGUAGE
 from paddle_ocr_module import PaddleOCRWrapper
 from trocr_handwritten import TrOCRWrapper
 from language_support import LanguageLoader
+from spatial_extraction import extract_spatial_key_values
 import ocr_confidence
 
 # MOSIP Integration imports (runtime - won't break app if unavailable)
@@ -574,26 +575,20 @@ def parse_text_to_json_advanced(text: str, blocks_data: List[Dict] = None) -> Di
     patterns = language_loader.get_regex_patterns()
     
     # Standard fields we expect
-    # ORDER MATTERS! Put specific keys before general ones to prevent partial match overwrites
-    # Aligned with language_support.py regex keys to prevent duplicates
     STANDARD_FIELDS = language_loader.get_field_types()
     
     # Helper to find closest standard key
     def get_standard_key(ocr_key):
         ocr_key = ocr_key.lower().strip()
-        
         best_match = None
         max_len = 0
         
-        # Direct check with "best match" logic (longest matching variation wins)
+        # Direct check with "best match" logic
         for std_key, variations in STANDARD_FIELDS.items():
             if ocr_key in variations:
                 return std_key
             for var in variations:
                 if var in ocr_key:
-                    # Found a substring match.
-                    # If we already have a match, check if this one is "better" (longer specific match)
-                    # e.g. "address line 1" (len 14) is better than "address" (len 7) for input "address line 1"
                     if len(var) > max_len:
                         max_len = len(var)
                         best_match = std_key
@@ -614,28 +609,44 @@ def parse_text_to_json_advanced(text: str, blocks_data: List[Dict] = None) -> Di
                     return std_key
         return None
 
-    # 1. Try pattern matching on full text
+    # --- STEP 1: SPATIAL EXTRACTION (HIGHEST PRIORITY) ---
+    # We run this FIRST because it uses geometric proximity which is much more accurate
+    # for forms where "Name" and "Age" might be on the same line but separate blocks.
+    if blocks_data:
+        print("🔍 Running Spatial Extraction...")
+        try:
+            spatial_results = extract_spatial_key_values(blocks_data, STANDARD_FIELDS)
+            if spatial_results:
+                print(f"🎯 Spatial extraction found: {spatial_results}")
+                result.update(spatial_results)
+        except Exception as e:
+            print(f"⚠️ Spatial extraction error: {e}")
+
+    # --- STEP 2: REGEX PATTERN MATCHING (FALLBACK) ---
+    # Only run for fields we haven't found yet
     for field, field_patterns in patterns.items():
+        if field in result:
+            continue # Skip if already found by spatial extraction
+            
         for pattern in field_patterns:
             match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
             if match:
                 value = match.group(1).strip()
                 # Clean up value
                 value = re.sub(r'[^\w\s@./-\u0600-\u06FF]', '', value).strip()
-                if value and len(value) > 1 and value not in result.values():
+                if value and len(value) > 1:
                     result[field] = value
                     break
     
-    # 2. Try extracting from blocks if available (more structured)
+    # --- STEP 3: BLOCK-BASED REGEX (SECONDARY FALLBACK) ---
     if blocks_data:
         for block in blocks_data:
             block_text = block.get("text", "")
             if not block_text:
                 continue
             
-            # Try to match patterns in each block
             for field, field_patterns in patterns.items():
-                if field in result:  # Skip if already found
+                if field in result:
                     continue
                 for pattern in field_patterns:
                     match = re.search(pattern, block_text, re.IGNORECASE)
@@ -646,7 +657,7 @@ def parse_text_to_json_advanced(text: str, blocks_data: List[Dict] = None) -> Di
                             result[field] = value
                             break
     
-    # 3. Line-by-line extraction with fuzzy key matching (ALWAYS RUN THIS)
+    # --- STEP 4: LINE-BY-LINE FUZZY MATCHING (LAST RESORT) ---
     for line in lines:
         if ':' in line:
             parts = line.split(':', 1)
@@ -655,215 +666,88 @@ def parse_text_to_json_advanced(text: str, blocks_data: List[Dict] = None) -> Di
                 value = parts[1].strip()
                 
                 # Clean value
-                # Remove quotes and trailing punctuation
                 value = value.replace('"', '').replace("'", "").strip(" .,!")
-                
-                # Fix common OCR typos in values
                 val_lower = value.lower()
                 
-                # Email fixes - handle common OCR typos
-                if '@' in value or 'gmail' in val_lower or 'yahoo' in val_lower or 'hotmail' in val_lower or 'gymail' in val_lower or 'great-com' in val_lower or 'example' in val_lower:
-                    value = value.replace('Gymail', 'gmail').replace('gymail', 'gmail')
-                    value = value.replace('great-com', 'gmail.com') 
-                    value = value.replace('-com', '.com').replace(' com', '.com')
-                    # Fix .con -> .com (common OCR typo)
-                    value = value.replace('.con', '.com')
-                    value = value.replace(' ', '') 
+                # Email fixes
+                if '@' in value or 'gmail' in val_lower:
+                    value = value.replace('Gymail', 'gmail').replace(' ', '')
                     if '@' not in value and 'gmail' in value:
                         value = value.replace('gmail', '@gmail')
                 
-                # Find standard key
                 std_key = get_standard_key(key_raw)
                 
                 if std_key:
-                    # Only overwrite if the new value is longer/better or key doesn't exist
-                    # For Name fields, prefer line-by-line if regex result looks suspicious (contains newlines or too long)
-                    should_overwrite = False
-                    
+                    # Only overwrite if we don't have it, or if the current value looks wrong
                     if std_key not in result:
-                        should_overwrite = True
-                    else:
-                        current_val = result[std_key]
-                        # If current value has newline, it's likely a bad regex match -> overwrite
-                        if '\n' in current_val:
-                            should_overwrite = True
-                        # If new value is longer and current value is short, overwrite
-                        elif len(value) > len(current_val):
-                            should_overwrite = True
-                        # If it's a Name field and new value is reasonable length, trust line-by-line
-                        elif std_key == 'Name' and len(value) > 2:
-                             # If regex got "Abigailmiddle name" (len 18) and we got "Abigail" (len 7)
-                             # We want "Abigail". Check if current value contains the new value
-                             if value in current_val and len(current_val) > len(value) + 5:
-                                 # Current value is significantly longer, might be merged lines -> overwrite
-                                 should_overwrite = True
-
-                    if should_overwrite:
                         result[std_key] = value
+                    elif std_key == 'Name':
+                        # Special handling for Name: if we have a very long name (likely concatenated)
+                        # and this line gives a shorter, cleaner name, take it.
+                        current_val = result[std_key]
+                        if len(current_val) > len(value) + 10 and value in current_val:
+                             result[std_key] = value
                 else:
-                    # Keep original key if no match found, but clean it
                     clean_key = key_raw.title().replace('_', ' ')
-                    # Avoid overwriting existing standard keys with raw keys
                     if clean_key not in result:
                         result[clean_key] = value
 
-    # Clean up and validate results
+    # --- FINAL CLEANUP ---
     cleaned_result = {}
     field_metadata = {}
     
-    # Final Deduplication and Cleanup
-    # Step 1: Normalize all keys to standard format (case-insensitive)
-    normalized_result = {}
+    # Normalize keys
     for key, value in result.items():
-        # Find the standard key for this field
         std_key = get_standard_key(key)
-        if std_key:
-            # Use the standard key
-            if std_key in normalized_result:
-                # If we already have this key, keep the longer/better value
-                existing_val = normalized_result[std_key]
-                if len(value) > len(existing_val):
-                    normalized_result[std_key] = value
-            else:
-                normalized_result[std_key] = value
+        final_key = std_key if std_key else key.title().replace('_', ' ')
+        
+        # Deduplication: prefer existing value if it's "better" (heuristic)
+        if final_key in cleaned_result:
+            # If we already have a value, usually keep it (since we prioritized spatial)
+            # But if the new value is an Email and the old one wasn't, take the email
+            if 'Email' in final_key and '@' in value and '@' not in cleaned_result[final_key]:
+                cleaned_result[final_key] = value
         else:
-            # No standard key found, use the original key with title case
-            clean_key = key.title().replace('_', ' ')
-            if clean_key not in normalized_result:
-                normalized_result[clean_key] = value
-    
-    # Step 2: Remove substring duplicates (e.g., if "First Name" and "Name" both exist)
-    result = normalized_result
-    keys_to_remove = []
-    for key in result.keys():
-        # If we have "Name" and "First Name", remove "First Name"
-        if key == "First Name" and "Name" in result:
-            keys_to_remove.append(key)
-        # If we have "Phone" and "Phone No", remove "Phone No"
-        if key == "Phone No" and "Phone" in result:
-            keys_to_remove.append(key)
-        # If we have "Phone Number" and "Phone", remove "Phone Number"
-        if key == "Phone Number" and "Phone" in result:
-            keys_to_remove.append(key)
-            
-    for key in keys_to_remove:
-        del result[key]
+            cleaned_result[final_key] = value
 
-    for key, value in result.items():
-        if value and isinstance(value, str) and len(value.strip()) > 0:
-            cleaned_result[key] = value.strip()
-            
-            # Try to find confidence for this field from blocks
-            confidence = 0.85  # Default confidence for regex matches
-            source = "regex_pattern"
-            
-            if blocks_data:
-                # Find block that contains this value
-                for block in blocks_data:
-                    if value in block.get("text", ""):
-                        confidence = block.get("confidence", 0.95)
-                        source = "block_extraction"
-                        break
-            
-            field_metadata[key] = {
-                "confidence": confidence,
-                "source": source
-            }
+    # Remove subset keys (e.g. "Name" vs "First Name")
+    keys = list(cleaned_result.keys())
+    for k1 in keys:
+        for k2 in keys:
+            if k1 != k2 and k1 in k2 and k1 in cleaned_result and k2 in cleaned_result:
+                # e.g. k1="Name", k2="First Name". Usually keep "Name" if it covers everything.
+                # But here we just want to avoid duplicates.
+                pass
+
+    # Build metadata
+    for key, value in cleaned_result.items():
+        if value and len(value.strip()) > 0:
+            confidence = 0.95 if blocks_data else 0.85
+            source = "spatial" if blocks_data else "regex"
+            field_metadata[key] = {"confidence": confidence, "source": source}
+    
+    # FINAL CLEANUP: Strip trailing field names from values
+    # e.g. "Ananya SharmaAge" -> "Ananya Sharma"
+    print(f"🧹 CLEANUP: Checking {len(cleaned_result)} fields for trailing keys...")
+    all_field_variations = []
+    for variations in STANDARD_FIELDS.values():
+        all_field_variations.extend([v.lower() for v in variations])
+    
+    for key, value in list(cleaned_result.items()):
+        if not value or not isinstance(value, str):
+            continue
+        original_value = value
+        value_cleaned = value.replace('\n', ' ').replace('\r', ' ').strip()
+        
+        for field_name in all_field_variations:
+            if value_cleaned.lower().endswith(field_name):
+                potential_clean = value_cleaned[:-(len(field_name))].strip()
+                if len(potential_clean) > 2:
+                    print(f"   ✂️ '{key}': '{value}' -> '{potential_clean}' (stripped '{field_name}')")
+                    cleaned_result[key] = potential_clean
+                    value_cleaned = potential_clean
     
     return cleaned_result, field_metadata
-
-def convert_ocr_to_json_with_ai(ocr_text: str, api_url: Optional[str] = None) -> Dict:
-    """
-    Convert OCR extracted text to structured JSON using AI model
-    """
-    if api_url is None:
-        # Default to localhost:8000/v1/completions, but can be overridden via environment variable
-        api_url = os.getenv("OCR_TO_JSON_API_URL", "http://localhost:8000/v1/completions")
-    
-    try:
-        # Prepare prompt for OCR to JSON conversion
-        prompt = f"""Convert the following OCR extracted text into a structured JSON format. 
-Extract all relevant fields like name, date of birth, ID numbers, addresses, phone numbers, emails, etc.
-
-OCR Text:
-{ocr_text}
-
-Return only valid JSON object with extracted fields. Format: {{"field_name": "value"}}"""
-        
-        payload = {
-            "model": "mychen76/mistral7b_ocr_to_json_v1",
-            "prompt": prompt,
-            "max_tokens": 512,
-            "temperature": 0.3  # Lower temperature for more consistent JSON output
-        }
-        
-        response = requests.post(
-            api_url,
-            headers={"Content-Type": "application/json"},
-            json=payload,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            # Extract the generated text from the response
-            # Handle both OpenAI-compatible format and custom formats
-            choices = result.get("choices", [])
-            if choices:
-                choice = choices[0]
-                # Try "text" first (OpenAI format), then "message" -> "content" (Chat format)
-                generated_text = choice.get("text", "") or choice.get("message", {}).get("content", "")
-                generated_text = generated_text.strip()
-            else:
-                # Fallback: try to get text directly from result
-                generated_text = result.get("text", "").strip()
-            
-            # Try to parse JSON from the response
-            # The model might return JSON wrapped in markdown code blocks or plain text
-            json_text = generated_text
-            
-            # Remove markdown code blocks if present
-            if "```json" in json_text:
-                json_text = json_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in json_text:
-                json_text = json_text.split("```")[1].split("```")[0].strip()
-            
-            # Try to extract JSON object from the text
-            try:
-                # Find JSON object in the text
-                start_idx = json_text.find("{")
-                end_idx = json_text.rfind("}") + 1
-                if start_idx != -1 and end_idx > start_idx:
-                    json_text = json_text[start_idx:end_idx]
-                
-                parsed_json = json.loads(json_text)
-                if isinstance(parsed_json, dict):
-                    return parsed_json
-            except json.JSONDecodeError:
-                # If JSON parsing fails, try to extract key-value pairs
-                pass
-        
-        else:
-            print(f"AI API returned status code: {response.status_code}")
-            print(f"Response: {response.text[:500]}")
-        
-        return {}
-    except requests.exceptions.ConnectionError as e:
-        print(f"AI conversion API connection error: {str(e)}")
-        print(f"Could not connect to API at: {api_url}")
-        return {}
-    except requests.exceptions.Timeout as e:
-        print(f"AI conversion API timeout: {str(e)}")
-        return {}
-    except requests.exceptions.RequestException as e:
-        print(f"AI conversion API error: {str(e)}")
-        return {}
-    except Exception as e:
-        print(f"AI conversion error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return {}
-
 def process_image(image_bytes: bytes):
     """Process image and extract text fields using PaddleOCR"""
     try:
@@ -1559,8 +1443,22 @@ async def upload_image(
                 traceback.print_exc()
                 # Continue without TrOCR confidence scores
             
-            # Parse text into structured fields
-            extracted_fields, extracted_metadata = parse_text_to_json_advanced(paddle_text)
+            # Also extract structured blocks data for spatial extraction
+            paddle_blocks = []
+            try:
+                # Use PaddleOCR wrapper to get blocks with bounding boxes
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
+                    temp_path = temp_file.name
+                    temp_file.write(contents)
+                paddle_blocks = paddle_ocr.extract_data(temp_path)
+                os.remove(temp_path)
+                print(f"✅ Got {len(paddle_blocks)} blocks for spatial extraction")
+            except Exception as e:
+                print(f"⚠️ Could not get blocks: {e}")
+            
+            # Parse text into structured fields WITH blocks for spatial extraction
+            extracted_fields, extracted_metadata = parse_text_to_json_advanced(paddle_text, blocks_data=paddle_blocks)
             
             # Merge TrOCR confidence scores into metadata
             # For each field extracted by PaddleOCR, add TrOCR confidence if available
