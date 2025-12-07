@@ -323,6 +323,11 @@ class LanguageLoader:
             "Card No": [
                 r'(?:card no|card number|card no_)[\s:]*([A-Z0-9]+)',
                 r'Card[\s:]*No[\s:]*([A-Z0-9]+)'
+            ],
+            "Blood Group": [
+                r'(?:blood group|blood type|b\.?g\.?)[\s:]*([ABO]{1,2}[+-])',
+                r'Blood[\s:]*Group[\s:]*([ABO]{1,2}[+-])',
+                r'\b([ABO]{1,2}[+-])\b'
             ]
         },
         "ar": {
@@ -379,6 +384,10 @@ class LanguageLoader:
             ],
             "Card No": [
                 r'(?:رقم البطاقة)[\s:]*([A-Z0-9]+)'
+            ],
+            "Blood Group": [
+                r'(?:فصيلة الدم|زمرة الدم)[\s:]*([ABO]{1,2}[+-])',
+                r'\b([ABO]{1,2}[+-])\b'
             ]
         },
         "hi": {
@@ -435,6 +444,10 @@ class LanguageLoader:
             ],
             "Card No": [
                 r'(?:कार्ड संख्या|कार्ड नंबर)[\s:]*([A-Z0-9]+)'
+            ],
+            "Blood Group": [
+                r'(?:रक्त समूह|ब्लड ग्रुप)[\s:]*([ABO]{1,2}[+-])',
+                r'\b([ABO]{1,2}[+-])\b'
             ]
         }
     }
@@ -456,7 +469,8 @@ class LanguageLoader:
             'State': ['state', 'province'],
             'Country': ['country', 'nation'],
             'Gender': ['gender', 'sex'],
-            'Pincode': ['pincode', 'pin code', 'postal code', 'zip code', 'zip']
+            'Pincode': ['pincode', 'pin code', 'postal code', 'zip code', 'zip'],
+            'Blood Group': ['blood group', 'blood type', 'b.g.', 'bg', 'blood']
         },
         "ar": {
             'Name': ['الاسم', 'الاسم الكامل', 'الاسم الأول', 'اللقب', 'اسم العائلة'],
@@ -471,7 +485,8 @@ class LanguageLoader:
             'City': ['المدينة', 'البلدة'],
             'Country': ['البلد', 'الدولة'],
             'Gender': ['الجنس', 'النوع'],
-            'Pincode': ['الرمز البريدي', 'صندوق البريد']
+            'Pincode': ['الرمز البريدي', 'صندوق البريد'],
+            'Blood Group': ['فصيلة الدم', 'زمرة الدم', 'الدم']
         },
         "hi": {
             'Name': ['नाम', 'पूरा नाम', 'पहला नाम', 'अंतिम नाम', 'उपनाम', 'दिया गया नाम'],
@@ -487,7 +502,8 @@ class LanguageLoader:
             'State': ['राज्य', 'प्रदेश'],
             'Country': ['देश', 'राष्ट्र'],
             'Gender': ['लिंग', 'जेंडर'],
-            'Pincode': ['पिनकोड', 'पिन कोड', 'डाक कोड', 'जिप कोड']
+            'Pincode': ['पिनकोड', 'पिन कोड', 'डाक कोड', 'जिप कोड'],
+            'Blood Group': ['रक्त समूह', 'ब्लड ग्रुप', 'खून का समूह']
         }
     }
 
