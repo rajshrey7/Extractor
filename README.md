@@ -1,14 +1,16 @@
 # OCR Text Extraction & Verification System
 
-A comprehensive, production-ready OCR system with **multi-lingual support** (English, Arabic, Hindi), **TrOCR handwritten text recognition**, **real-time confidence scoring**, and **MOSIP integration** for identity document processing.
+**A production-ready OCR system with multi-lingual support, handwritten text recognition, real-time confidence scoring, and MOSIP integration.**
 
-## 🎯 Project Overview
+## 🎯 Overview
 
-Enterprise-grade OCR solution with 100% requirements compliance:
-- ✅ **20/20 Requirements Met** (Mandatory + Good-to-Have + Bonus)
-- ✅ **Production Ready** with Python 3.10+ compatibility
-- ✅ **MOSIP Pre-Registration Integration** 
-- ✅ **Multi-lingual Support**: English, Arabic (العربية), Hindi (हिन्दी)
+Enterprise-grade document processing solution featuring:
+- ✅ **100% Requirements Coverage** - All 20 mandatory, good-to-have, and bonus features
+- 🌐 **Multi-lingual** - English, Arabic (RTL), Hindi (Devanagari)
+- ✍️ **Handwritten Text** - TrOCR transformer-based recognition
+- 🆔 **MOSIP Integration** - Pre-Registration API with full packet management
+- 📊 **Quality Detection** - Real-time image quality analysis
+- 💯 **Confidence Scoring** - Field-level accuracy metrics
 
 ---
 
@@ -16,34 +18,34 @@ Enterprise-grade OCR solution with 100% requirements compliance:
 
 ### Prerequisites
 
-- **Python 3.10+** (tested on 3.10, 3.11, 3.12, 3.13)
-- **4GB+ RAM** (8GB recommended for TrOCR)
-- **Web browser** (Chrome, Firefox, Edge, Safari)
+- Python 3.10 or higher
+- 4GB RAM minimum (8GB recommended for TrOCR)
+- Modern web browser
 
 ### Installation
 
 ```bash
-# 1. Clone repository
+# Clone repository
 git clone <repository-url>
 cd extractor
 
-# 2. Create virtual environment
+# Create virtual environment
 python -m venv venv
 
-# Windows
+# Activate (Windows)
 venv\Scripts\activate
 
-# Linux/Mac
+# Activate (Linux/Mac)
 source venv/bin/activate
 
-# 3. Install dependencies
+# Install dependencies
 pip install -r requirements.txt
 
-# 4. Start server
+# Start server
 python run_server.py
 ```
 
-The application will be available at **http://localhost:8001**
+**Access the application:** http://localhost:8001
 
 ---
 
@@ -329,10 +331,12 @@ Or switch via UI dropdown (top-right header).
 
 Edit `config.py`:
 ```python
-MOSIP_ENABLED = True
-MOSIP_API_URL = "https://your-mosip-server.com"
-MOSIP_API_KEY = "your-api-key"
+MOSIP_ENABLED = True  # Set to False for mock mode
+MOSIP_BASE_URL = "https://collab.mosip.net"
+MOSIP_CLIENT_ID = "mosip-prereg-client"
+MOSIP_CLIENT_SECRET = "mosip"
 ```
+
 
 ---
 
