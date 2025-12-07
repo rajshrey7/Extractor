@@ -4,6 +4,11 @@ Simple server startup script with error handling
 import sys
 import os
 
+# Fix Windows console encoding for emoji/Unicode characters
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+
 print("="*60)
 print("Starting OCR Server...")
 print("="*60)

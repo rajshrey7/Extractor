@@ -15,6 +15,12 @@ paddlepaddle
 paddleocr
 transformers>=4.30.0
 torch==2.6.0
+torchvision
+
+# TrOCR Dependencies (required for transformers)
+sentencepiece
+protobuf
+sacremoses
 
 # Utilities
 aiofiles
