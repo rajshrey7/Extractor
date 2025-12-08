@@ -24,6 +24,7 @@ from paddle_ocr_module import PaddleOCRWrapper
 from trocr_handwritten import TrOCRWrapper
 from language_support import LanguageLoader
 from spatial_extraction import extract_spatial_key_values
+from enhanced_field_parser import parse_text_to_json_with_logging
 import ocr_confidence
 
 # MOSIP Integration imports (runtime - won't break app if unavailable)
@@ -796,9 +797,85 @@ def process_image(image_bytes: bytes):
     general_text = [item['text'] for item in ocr_results if item['text'].strip()]
     full_text = "\n".join(general_text)
     
-    # Extract structured fields from full text
-    print("🔍 Parsing structured fields...")
-    extracted_fields, extracted_metadata = parse_text_to_json_advanced(full_text, blocks_data=ocr_results)
+    # DEBUG: Show raw OCR output
+    print("\n" + "=" * 60)
+    print("🔍 DEBUG: RAW OCR TEXT EXTRACTED BY PADDLEOCR")
+    print("=" * 60)
+    print(full_text)
+    print("=" * 60 + "\n")
+    
+    # Extract structured fields from full text (WITH ENHANCED LOGGING)
+    print("🔍 Parsing structured fields with enhanced logging...")
+    extracted_fields, extracted_metadata = parse_text_to_json_with_logging(
+        text=full_text,
+        blocks_data=ocr_results,
+        patterns=language_loader.get_regex_patterns(),
+        STANDARD_FIELDS=language_loader.get_field_types(),
+        extract_spatial_key_values_func=extract_spatial_key_values
+    )
+    
+    # FALLBACK: Catch standalone fields that spatial extraction missed
+    print("🔍 Checking for missed standalone fields...")
+    
+    # Fallback for Aadhaar (12 digits with spaces)
+    if 'Aadhaar' not in extracted_fields:
+        aadhaar_match = re.search(r'\b(\d{4}\s\d{4}\s\d{4})\b', full_text)
+        if aadhaar_match:
+            extracted_fields['Aadhaar'] = aadhaar_match.group(1)
+            print(f"✅ Fallback: Found Aadhaar: {aadhaar_match.group(1)}")
+    
+    
+    # DEBUG: Show what was extracted before cleaning
+    print("\n" + "=" * 60)
+    print("📋 EXTRACTED FIELDS BEFORE CLEANING:")
+    print("=" * 60)
+    for key, value in extracted_fields.items():
+        print(f"  {key}: {value}")
+    print("=" * 60 + "\n")
+    
+    # POST-PROCESSING: Clean the extracted data
+    print("🧹 Cleaning extracted data...")
+    try:
+        from data_cleaner import clean_ocr_data, get_data_quality
+        cleaned_fields = clean_ocr_data(extracted_fields)
+        quality_metrics = get_data_quality(cleaned_fields, extracted_fields)
+        print(f"✅ Data cleaned: {quality_metrics['valid_fields']}/{quality_metrics['total_extracted']} fields retained")
+        if quality_metrics['removed_field_names']:
+            print(f"   Removed: {', '.join(quality_metrics['removed_field_names'])}")
+        
+        # Use cleaned fields instead of raw extracted_fields
+        extracted_fields = cleaned_fields
+        
+        # Add quality info to metadata
+        extracted_metadata['data_quality'] = quality_metrics
+    except Exception as e:
+        print(f"⚠️ Data cleaning error (using uncleaned data): {e}")
+        import traceback
+        traceback.print_exc()
+    
+    # FALLBACK FOR NAME - Run AFTER cleaning in case cleaner removed institutional text
+    if 'Name' not in extracted_fields:
+        print("🔍 Name missing after cleaning, trying fallback...")
+        
+        # Strategy 1: Look for name near DOB pattern (common in Aadhaar)
+        dob_section = re.search(r'([A-Z][a-z]+\s+[A-Z][a-z]+)\s*.*?\s*(?:DOB|Date of Birth|जन्म)', full_text, re.IGNORECASE | re.DOTALL)
+        if dob_section:
+            potential_name = dob_section.group(1)
+            if not any(word in potential_name.lower() for word in ['government', 'india', 'of']):
+                extracted_fields['Name'] = potential_name
+                print(f"✅ Fallback Strategy 1: Found Name near DOB: {potential_name}")
+        
+        # Strategy 2: Find any proper capitalized name (if strategy 1 failed)
+        if 'Name' not in extracted_fields:
+            name_matches = re.findall(r'\b([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b', full_text)
+            for name in name_matches:
+                name_lower = name.lower().replace(' ', '')
+                # Skip institutional/header words
+                bad_words = ['government', 'india', 'of', 'bharath', 'bharat', 'republic']
+                if not any(word in name_lower for word in bad_words) and len(name) > 5:
+                    extracted_fields['Name'] = name
+                    print(f"✅ Fallback Strategy 2: Found Name: {name}")
+                    break
     
     # Check if ID card found (heuristic based on fields)
     found_idcard = len(extracted_fields) > 0

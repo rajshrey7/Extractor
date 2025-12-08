@@ -258,34 +258,61 @@ class LanguageLoader:
     REGEX_PATTERNS = {
         "en": {
             "Name": [
-                r'(?:name|full name|first name|given name|given)[\s:]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
-                r'Name[\s:]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)'
+                # Universal name patterns - handles all documents
+                r'(?:name|full name|first name|given name|applicant name|candidate name|holder name|bearer name)[\s:.-]*([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)+)',
+                r'(?:name|naam)[\s:.-]*([A-Z][a-zA-Z\s]{3,50})',
+                r'Name[\s:.-]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+                r'^([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)$'  # Standalone name
             ],
             "Surname": [
                 r'(?:surname|last name|family name|sumname)[\s:]*([A-Z][a-z]+)',
                 r'Surname[\s:]*([A-Z][a-z]+)'
             ],
             "Date of Birth": [
-                r'(?:date of birth|dob|birth date|born|of birth)[\s:]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
-                r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})'
+                # Universal date patterns - all formats
+                r'(?:date of birth|dob|d\.?o\.?b\.?|birth date|born|date of binth|of birth|janma|जन्म)[\s:.-]*(\d{1,2}[/\-.]+\d{1,2}[/\-.]+\d{2,4})',
+                r'(?:dob|date)[\s:.-]*(\d{4}[/\-.]+\d{1,2}[/\-.]+\d{1,2})',  # YYYY-MM-DD
+                r'(\d{1,2}[/\-.]+\d{1,2}[/\-.]+\d{2,4})',  # Standalone date
+                r'(\d{2}[/\-.]+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[/\-.]+\d{4})'  # DD-MMM-YYYY
             ],
             "Passport No": [
-                r'(?:passport|passport no|passport number|document no|document number)[\s:]*([A-Z0-9]{6,})',
-                r'Passport[\s:]*([A-Z0-9]{6,})'
+                # Universal passport patterns
+                r'(?:passport|passport no\.?|passport number|document no\.?|document number|passport na|पासपोर्ट)[\s:.-]*([A-Z]\d{7,8}|[A-Z]{2}\d{6,7}|[A-Z0-9]{6,10})',
+                r'Passport[\s:.-]*(?:No|Number)?[\s:.-]*([A-Z]\d{7,8})',
+                r'\b([A-Z]\d{7,8})\b',  # Standalone passport format
+                r'\b([A-Z]{2}\d{7})\b'  # Some countries use 2 letters + 7 digits
+            ],
+            "Aadhaar": [
+                # Aadhaar patterns - MUST come BEFORE Personal No
+                r'(?:aadhaar|aadhar|aadhaar no\.?|aadhar no\.?|aadhaar number|uid|आधार)[\s:.-]*(\d{4}[\s-]?\d{4}[\s-]?\d{4})',
+                r'Aadhaar[\s:]*(?:No|Number)?[\s:.-]*(\d{12})',
+                r'\b(\d{4}\s\d{4}\s\d{4})\b',  # Standalone with spaces - PRIORITY for Aadhaar cards
+                r'\b(\d{12})\b'  # 12 digits no spaces
             ],
             "Personal No": [
-                r'(?:personal no|national id|id number|personal number)[\s:]*([A-Z0-9]+)',
-                r'Personal[\s:]*No[\s:]*([A-Z0-9]+)'
+                # Universal ID patterns - Aadhaar, PAN, Voter ID, etc.
+                r'(?:personal no|national id|id number|personal number|identification|id no|citizen id)[\s:.-]*([A-Z0-9]{6,20})',
+                r'(?:aadhaar|aadhar|uid|आधार)[\s:.-]*(\d{4}[\s-]?\d{4}[\s-]?\d{4})',
+                r'(?:pan|पैन)[\s:.-]*([A-Z]{5}\d{4}[A-Z])',
+                r'(?:voter id|epic no|electoral)[\s:.-]*([A-Z]{3}\d{7})',
+                r'Personal[\s:]*No[\s:.-]*([A-Z0-9]+)'
             ],
             "Phone": [
-                r'(?:phone|mobile|tel|telephone)[\s:]*([+]?[\d\s\-()]{8,})',
-                r'(\+?\d{1,3}[\s\-]?\d{3,4}[\s\-]?\d{3,4}[\s\-]?\d{3,4})'
+                # Phone patterns - MUST have label to avoid matching Aadhaar
+                r'(?:phone|mobile|mob|tel|telephone|contact|cell|फोन|मोबाइल)[\s:.-]*([+]?[\d\s\-()]{8,15})',
+                r'(?:phone|mobile|tel)[\s:.-]*(\+?\d{1,3}[\s.\-]?\(?\d{3,4}\)?[\s.\-]?\d{3,4}[\s.\-]?\d{3,4})',
+                r'(?:contact|mob)[\s:.-]*([+]91[\s\-]?\d{10})'  # Indian with label
             ],
             "Email": [
                 r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
             ],
             "Address": [
+                # Birth Certificate Specific Patterns
+                r'(?:address of parents at the time of birth of the child|permanent address of parents|address of parents)[\s:.-]*((?:[LHM]\.?[IА]?\.?[GО]\.?-?\d+|\d+/\d+)[^\n]+)',
+                r'(?:address|addr)[\s:.-]*((?:[LHM]\.?[IА]?\.?[GО]\.?-?\d+)[^\n]+)',
+                # General address patterns  
                 r'(?:address|street|location)[\s:]*([A-Z0-9][^,\n]+(?:,\s*[A-Z][a-z]+)*)',
+                r'((?:[LHM]I?G?-\d+|\d+/\d+),?\s+[A-Za-z]+(?:\s+[A-Za-z]+)*(?:\s+(?:Housing|Colony|Society|Board|Apartment|Complex|Nagar|Layout))?[^\n]*)',
                 r'(\d+\s+[A-Z][a-z]+\s+(?:Street|St|Avenue|Ave|Road|Rd|Lane|Ln|Drive|Dr)[^,\n]*)'
             ],
             "Issue Date": [
@@ -313,22 +340,138 @@ class LanguageLoader:
                 r'Height[\s:]*(\d+)'
             ],
             "Sex": [
-                r'(?:sex|gender|isex)[\s:]*([MF|Male|Female])',
-                r'Sex[\s:]*([MF])'
+                r'(?:sex|gender|isex|पुरुष|महिला)[\s:/]*([MF]|Male|Female|MALE|FEMALE|पुरुष|महिला)',
+                r'Sex[\s:./]*([MF]|Male|Female)',
+                r'/\s*(MALE|FEMALE|Male|Female)\b',  # After slash like "पुरुष / MALE"
+                r'\b(MALE|FEMALE)\b'  # Standalone
             ],
             "Place of Birth": [
                 r'(?:place of birth|place of binth)[\s:]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
                 r'Place[\s:]*of[\s:]*Birth[\s:]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)'
             ],
             "Card No": [
-                r'(?:card no|card number|card no_)[\s:]*([A-Z0-9]+)',
-                r'Card[\s:]*No[\s:]*([A-Z0-9]+)'
+                # Universal card number patterns - DL, Credit, etc.
+                r'(?:card no\.?|card number|driving license|dl no\.?|license no\.?|driving licence)[\s:.-]*([A-Z0-9]{6,20})',
+                r'(?:dl|lic|license)[\s:.-]*([A-Z]{2}[-\s]?\d{2}[-\s]?\d{4}[-\s]?\d{7})',  # Indian DL format
+                r'Card[\s:]*(?:No|Number)?[\s:.-]*([A-Z0-9\-]{6,20})',
+                r'([A-Z]{2}[-]?\d{13,14})'  # Some DL formats
             ],
             "Blood Group": [
                 r'(?:blood group|blood type|b\.?g\.?)[\s:]*([ABO]{1,2}[+-])',
                 r'Blood[\s:]*Group[\s:]*([ABO]{1,2}[+-])',
                 r'\b([ABO]{1,2}[+-])\b'
+            ],
+            # ===== BIRTH CERTIFICATE SPECIFIC FIELDS =====
+            "Father Name": [
+                r'(?:father[\'s]*\s*name|fathers name|father name|name of father)[\\s:.-]*([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)+)',
+                r'Father[\\s:.-]*([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)+)'
+            ],
+            "Mother Name": [
+                r'(?:mother[\'s]*\s*name|mothers name|mother name|name of mother)[\\s:.-]*([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)+)',
+                r'Mother[\\s:.-]*([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)+)'
+            ],
+            "Certificate No": [
+                r'(?:certificate no|certificate number|cert no|cert number|registration number)[\\s:.-]*(\\d+)',
+                r'Certificate[\\s:]*No[\\s:.-]*(\\d+)'
+            ],
+            "Registration No": [
+                r'(?:registration no|registration number|reg no|reg number)[\\s:.-]*(\\d+)',
+                r'Registration[\\s:]*No[\\s:.-]*(\\d+)'
+            ],
+            "Date of Registration": [
+                r'(?:date of registration|registration date|reg date|registered on)[\\s:]*(\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4})',
+                r'Registration[\\s:]*Date[\\s:]*(\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4})'
+            ],
+            "Place of Issue": [
+                r'(?:place of issue|issued at|issuing office|place)[\\s:.-]*([A-Z][a-z]+(?:(?:\\s+[A-Z][a-z]+)*|\\s*[-,]\\s*[A-Z][a-z]+)*)',
+                r'Place[\\s:]*of[\\s:]*Issue[\\s:.-]*([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)*)'
+            ],
+            "Religion": [
+                r'(?:religion|relig)[\\s:.-]*(\\w+)',
+                r'Religion[\\s:.-]*(\\w+)'
+            ],
+            "Pin Code": [
+                r'(?:pin code|pincode|pin|postal code)[\\s:.-]*(\\d{6})',
+                r'Pin[\\s:]*Code[\\s:.-]*(\\d{6})'
+            ],
+            "District": [
+                r'(?:district|dist)[\\s:.-]*([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)*)',
+                r'District[\\s:.-]*([A-Z][a-z]+)'
+            ],
+            "Aadhaar": [
+                r'(?:aadhaar|aadhar|aadhaar no|aadhar no|aadhaar number)[\\s:.-]*(\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4})',
+                r'Aadhaar[\\s:]*(?:No|Number)[\\s:.-]*(\\d{12})'
+            ],
+            "Permanent Address": [
+                r'(?:permanent address of parents|permanent address)[\\s:.-]*((?:[LHM]\\.?[IA]?\\.?[GO]?\\.?-?\\d+|\\d+/\\d+)[^\\n]+)',
+                r'Permanent[\\s:]*Address[\\s:.-]*([A-Z0-9][^\\n]+)'
+            ],
+            # ===== ADDITIONAL UNIVERSAL DOCUMENT FIELDS =====
+            "PAN": [
+                r'(?:pan|pan no\.?|pan number|pan card|permanent account number|पैन)[\\s:.-]*([A-Z]{5}\\d{4}[A-Z])',
+                r'\\b([A-Z]{5}\\d{4}[A-Z])\\b'  # Standalone PAN format
+            ],
+            "Aadhaar": [
+                r'(?:aadhaar|aadhar|aadhaar no\.?|aadhar no\.?|aadhaar number|uid|आधार)[\\s:.-]*(\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4})',
+                r'Aadhaar[\\s:]*(?:No|Number)?[\\s:.-]*(\\d{12})',
+                r'\\b(\\d{4}\\s\\d{4}\\s\\d{4})\\b'  # 12 digit format with spaces - PRIORITY
+            ],
+            "VID": [
+                r'(?:vid|virtual id|virtual identity)[\\s:.-]*(\\d{16})',
+                r'VID[\\s:.-]*(\\d{16})',
+                r'\\b(\\d{16})\\b'  # 16 digit standalone
+            ],
+            "Driving License": [
+                r'(?:driving license|driving licence|dl no\.?|dl number|license no\.?|ड्राइविंग)[\\s:.-]*([A-Z]{2}[-\\s]?\\d{2}[-\\s]?\\d{4}[-\\s]?\\d{7})',
+                r'(?:dl|lic)[\\s:.-]*([A-Z]{2}\\d{13,15})',
+                r'([A-Z]{2}[-]?\\d{13,14})'  # Indian DL format
+            ],
+            "Voter ID": [
+                r'(?:voter id|epic no\.?|electoral|voter card|मतदाता)[\\s:.-]*([A-Z]{3}\\d{7})',
+                r'(?:epic|voter)[\\s:.-]*([A-Z]{3}\\d{7})',
+                r'\\b([A-Z]{3}\\d{7})\\b'  # Standalone voter ID
+            ],
+            "School": [
+                r'(?:school|school name|institution|स्कूल)[\\s:.-]*([A-Z][a-zA-Z\\s,\\.]{5,100})',
+                r'School[\\s:.-]*([A-Z][^\\n]{5,80})'
+            ],
+            "College": [
+                r'(?:college|university|institution|कॉलेज)[\\s:.-]*([A-Z][a-zA-Z\\s,\\.]{5,100})',
+                r'College[\\s:.-]*([A-Z][^\\n]{5,80})'
+            ],
+            "Roll No": [
+                r'(?:roll no\.?|roll number|admission no\.?|student id)[\\s:.-]*([A-Z0-9/-]{5,20})',
+                r'Roll[\\s:]*(?:No|Number)[\\s:.-]*([A-Z0-9/-]+)'
+            ],
+            "Class": [
+                r'(?:class|grade|standard|std)[\\s:.-]*(\\d{1,2}(?:th|st|nd|rd)?|[IVX]+)',
+                r'Class[\\s:.-]*(\\d{1,2}|[IVX]+)'
+            ],
+            "Marks": [
+                r'(?:marks|score|cgpa|percentage)[\\s:.-]*(\\d{1,3}\\.?\\d{0,2}%?)',
+                r'Marks[\\s:.-]*(\\d+)'
+            ],
+            "Occupation": [
+                r'(?:occupation|profession|job|पेशा)[\\s:.-]*([A-Z][a-zA-Z\\s]{2,50})',
+                r'Occupation[\\s:.-]*([A-Z][a-z\\s]+)'
+            ],
+            "Marital Status": [
+                r'(?:marital status|marriage status|वैवाहिक)[\\s:.-]*((?:married|unmarried|single|divorced|widowed|widow))',
+                r'Marital[\\s:]*Status[\\s:.-]*(\\w+)'
+            ],
+            "Spouse Name": [
+                r'(?:spouse name|husband name|wife name|पति|पत्नी)[\\s:.-]*([A-Z][a-zA-Z\\s]+)',
+                r'(?:Spouse|Husband|Wife)[\\s:.-]*([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)+)'
+            ],
+            "State": [
+                r'(?:state|province|राज्य)[\\s:.-]*([A-Z][a-zA-Z\\s]{2,50})',
+                r'State[\\s:.-]*([A-Z][a-z\\s]+)'
+            ],
+            "City": [
+                r'(?:city|town|शहर)[\\s:.-]*([A-Z][a-zA-Z\\s]{2,50})',
+                r'City[\\s:.-]*([A-Z][a-z\\s]+)'
             ]
+
         },
         "ar": {
             "Name": [
@@ -470,7 +613,32 @@ class LanguageLoader:
             'Country': ['country', 'nation'],
             'Gender': ['gender', 'sex'],
             'Pincode': ['pincode', 'pin code', 'postal code', 'zip code', 'zip'],
-            'Blood Group': ['blood group', 'blood type', 'b.g.', 'bg', 'blood']
+            'Blood Group': ['blood group', 'blood type', 'b.g.', 'bg', 'blood'],
+            # Birth Certificate Fields
+            'Father Name': ['father name', 'fathers name', 'father', 'name of father', 'father\'s name'],
+            'Mother Name': ['mother name', 'mothers name', 'mother', 'name of mother', 'mother\'s name'],
+            'Certificate No': ['certificate no', 'certificate number', 'cert no', 'cert number', 'certificate', 'registration number'],
+            'Registration No': ['registration no', 'registration number', 'reg no', 'reg number', 'registration'],
+            'Date of Registration': ['date of registration', 'registration date', 'reg date', 'registered on', 'registration'],
+            'Place of Issue': ['place of issue', 'issued at', 'issuing office', 'place', 'issue place'],
+            'Religion': ['religion', 'relig'],
+            'Pin Code': ['pin code', 'pincode', 'pin', 'postal code', 'zip code', 'zip'],
+            'District': ['district', 'dist'],
+            'Aadhaar': ['aadhaar', 'aadhar', 'aadhaar no', 'aadhar no', 'aadhaar number', 'aadhar number', 'uid'],
+            'VID': ['vid', 'virtual id', 'virtual identity'],
+            'Permanent Address': ['permanent address', 'permanent address of parents', 'perm address'],
+            # Universal Document Fields
+            'PAN': ['pan', 'pan no', 'pan number', 'pan card', 'permanent account number'],
+            'Driving License': ['driving license', 'driving licence', 'dl', 'dl no', 'dl number', 'license'],
+            'Voter ID': ['voter id', 'epic', 'epic no', 'electoral', 'voter card'],
+            'School': ['school', 'school name', 'institution'],
+            'College': ['college', 'university', 'institution'],
+            'Roll No': ['roll no', 'roll number', 'admission no', 'student id'],
+            'Class': ['class', 'grade', 'standard', 'std'],
+            'Marks': ['marks', 'score', 'cgpa', 'percentage', 'result'],
+            'Occupation': ['occupation', 'profession', 'job', 'work'],
+            'Marital Status': ['marital status', 'marriage status', 'married'],
+            'Spouse Name': ['spouse', 'spouse name', 'husband', 'wife', 'husband name', 'wife name']
         },
         "ar": {
             'Name': ['الاسم', 'الاسم الكامل', 'الاسم الأول', 'اللقب', 'اسم العائلة'],
