@@ -1,0 +1,5 @@
+{
+  "BASE_URL": "http://localhost:8001/",
+  "PRE_REG_URL": "preregistration/v1/",
+  "OCR_API_URL": "http://localhost:8001/api"
+}

@@ -658,8 +658,20 @@
                     border-radius: 4px;
                     cursor: pointer;
                     font-size: 14px;
+                    margin-right: 8px;
                   ">
                 📋 Copy JSON
+              </button>
+              <button onclick="sendToMosipForm()" style="
+                    padding: 8px 16px;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 14px;
+                  ">
+                🚀 Send to MOSIP Form
               </button>
             </div>
             <pre id="extractedJSON" style="
@@ -1099,6 +1111,55 @@
     let currentJobFormUrl = null;
     let currentFilledFormData = null;
     let resumeIndexPath = null;
+
+    // Copy extracted JSON to clipboard
+    function copyExtractedJSON() {
+      const jsonElement = document.getElementById('extractedJSON');
+      if (jsonElement) {
+        navigator.clipboard.writeText(jsonElement.textContent).then(() => {
+          showAlert('alert', 'JSON copied to clipboard!', 'success');
+        }).catch(err => {
+          console.error('Failed to copy:', err);
+          showAlert('alert', 'Failed to copy JSON', 'error');
+        });
+      }
+    }
+
+    // Send extracted data to parent MOSIP form (when embedded in iframe)
+    function sendToMosipForm() {
+      if (Object.keys(extractedDataGlobal).length === 0) {
+        showAlert('alert', 'No extracted data to send. Please process a document first.', 'error');
+        return;
+      }
+
+      // Check if we're in an iframe
+      const isInIframe = window.parent !== window;
+
+      if (isInIframe) {
+        // Send data to parent window (MOSIP Angular app)
+        const message = {
+          type: 'OCR_DATA_EXTRACTED',
+          payload: {
+            extracted_fields: extractedDataGlobal,
+            timestamp: new Date().toISOString()
+          }
+        };
+
+        // Post to parent - try both localhost and 127.0.0.1
+        window.parent.postMessage(message, '*');
+
+        showAlert('alert', '✅ Data sent to MOSIP registration form! Check the form fields.', 'success');
+        console.log('Sent OCR data to MOSIP parent:', message);
+      } else {
+        // Not in iframe - show instructions
+        showAlert('alert', 'ℹ️ To use this feature, open MOSIP Pre-Registration UI at http://localhost:4200 and navigate to Document Upload.', 'success');
+
+        // Also copy to clipboard for manual use
+        navigator.clipboard.writeText(JSON.stringify(extractedDataGlobal, null, 2)).then(() => {
+          console.log('Data copied to clipboard as fallback');
+        });
+      }
+    }
 
     // Tab switching
     function switchTab(tabName) {

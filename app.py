@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -65,10 +65,10 @@ def get_google_form_handler():
 
 app = FastAPI(title="OCR Text Extraction & Verification API")
 
-# CORS middleware
+# CORS middleware - specific origins required when using credentials
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:4200", "http://127.0.0.1:4200", "http://localhost:8001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -83,9 +83,21 @@ if not os.path.exists("uploads"):
     os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
+# MOSIP OCR Demo Page
+@app.get("/mosip-demo")
+async def mosip_demo():
+    """Serve the MOSIP OCR Integration Demo page"""
+    template_path = os.path.join(os.path.dirname(__file__), "templates", "mosip_ocr_demo.html")
+    if os.path.exists(template_path):
+        return FileResponse(template_path, media_type="text/html")
+    return {"error": "Demo page not found"}
+
 # In-memory storage for uploaded images and region data (for streaming)
 uploaded_images = {}  # {image_id: image_bytes}
 region_data_cache = {}  # {image_id: [regions]}
+
+# In-memory storage for MOSIP pre-registration applications
+mosip_applications = {}  # {prid: application_data}
 
 # Initialize OCR models
 paddle_ocr = None
@@ -1338,6 +1350,65 @@ def parse_trocr_direct(text: str, confidence: float) -> Tuple[Dict, Dict]:
         
     return extracted_fields, field_confidences
 
+@app.post("/api/extract")
+async def extract_for_mosip(
+    file: UploadFile = File(...)
+):
+    """
+    OCR extraction endpoint for MOSIP integration.
+    Returns extracted data in format compatible with MOSIP pre-registration forms.
+    """
+    import traceback
+    
+    try:
+        file_bytes = await file.read()
+        file_name = file.filename.lower()
+        
+        # Determine if PDF or image
+        if file_name.endswith('.pdf'):
+            # Handle PDF
+            from pdf2image import convert_from_bytes
+            images = convert_from_bytes(file_bytes, dpi=200)
+            if images:
+                import io
+                buffer = io.BytesIO()
+                images[0].save(buffer, format='PNG')
+                image_bytes = buffer.getvalue()
+            else:
+                return JSONResponse(content={
+                    "success": False,
+                    "error": "Could not convert PDF"
+                }, status_code=400)
+        else:
+            image_bytes = file_bytes
+        
+        # Process with OCR - returns a dict with extracted_fields
+        result = process_image(image_bytes)
+        
+        # Get extracted fields from result
+        extracted_fields = result.get("extracted_fields", {})
+        
+        # Format response for MOSIP with confidence scores
+        response_data = {}
+        for field, value in extracted_fields.items():
+            response_data[field] = {
+                "value": value,
+                "confidence": 0.85  # Default confidence
+            }
+        
+        return {
+            "success": True,
+            "extracted_data": response_data,
+            "processing_time": 1.5
+        }
+        
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(content={
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
 @app.post("/api/upload")
 async def upload_image(
     file: UploadFile = File(...),
@@ -2218,6 +2289,1449 @@ async def health_check():
         "status": "healthy",
         "ocr_loaded": ocr_reader is not None
     }
+
+# =============================================================================
+# MOCK MOSIP PRE-REGISTRATION BACKEND ENDPOINTS
+# These endpoints allow the Angular Pre-Registration UI to work locally
+# =============================================================================
+
+@app.get("/preregistration/v1/login/config")
+async def mosip_login_config():
+    """Mock MOSIP login configuration"""
+    return {
+        "response": {
+            "mosip.kernel.otp.expiry-time": "180",
+            "mosip.kernel.otp.length": "6",
+            "mosip.kernel.otp.default-length": "6",
+            "mosip.kernel.otp.validation-attempt-threshold": "10",
+            "mosip.supported-languages": "eng,ara,fra",
+            "mosip.mandatory-languages": "eng",
+            "mosip.optional-languages": "ara,fra",
+            "mosip.primary-language": "eng",
+            "mosip.secondary-language": "ara",
+            "mosip.left_to_right_orientation": "eng,fra",
+            "mosip.id.validation.identity.dateOfBirth": "[0-9]{4}/[0-9]{2}/[0-9]{2}",
+            "mosip.login.mode": "email,mobile",
+            "mosip.preregistration.login.email.regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+            "mosip.preregistration.login.mobile.regex": "^[0-9]{10,15}$",
+            "mosip.preregistration.captcha.enable": "false",
+            "mosip.country.code": "MOR",
+            "preregistration.auto.logout.idle": "180",
+            "preregistration.auto.logout.timeout": "60",
+            "preregistration.auto.logout.ping": "30",
+            "preregistration.recommended.centers.locCode": "5",
+            "preregistration.availability.sync": "10",
+            "preregistration.availability.noOfDays": "30",
+            "preregistration.nearby.centers": "10",
+            "preregistration.identity.name": "fullName",
+            "preregistration.workflow.demographic": "true",
+            "preregistration.workflow.documentupload": "true",
+            "preregistration.workflow.booking": "true",
+            "preregistration.preview.fields": "fullName,dateOfBirth,gender,phone,email",
+            "mosip.notificationtype": "EMAIL|SMS"
+        },
+        "errors": None
+    }
+
+@app.post("/preregistration/v1/login/sendOtp")
+async def mosip_send_otp(request: dict = None):
+    """Mock send OTP for login"""
+    from datetime import datetime
+    return {
+        "response": {
+            "message": "OTP sent successfully",
+            "status": "true"
+        },
+        "responsetime": datetime.utcnow().isoformat() + "Z",
+        "errors": None
+    }
+
+@app.post("/preregistration/v1/login/sendOtp/langcode/{lang_code}")
+async def mosip_send_otp_lang(lang_code: str, request: dict = None):
+    """Mock send OTP with language"""
+    from datetime import datetime
+    return {
+        "response": {
+            "message": "OTP sent successfully",
+            "status": "true"
+        },
+        "responsetime": datetime.utcnow().isoformat() + "Z",
+        "errors": None
+    }
+
+@app.post("/preregistration/v1/login/sendOtpWithCaptcha")
+async def mosip_send_otp_captcha(request: dict = None):
+    """Mock send OTP with captcha for login"""
+    from datetime import datetime
+    return {
+        "response": {
+            "message": "OTP sent successfully",
+            "status": "true"
+        },
+        "responsetime": datetime.utcnow().isoformat() + "Z",
+        "errors": None
+    }
+
+@app.post("/preregistration/v1/login/validateOtp")
+async def mosip_validate_otp(request: dict = None):
+    """Mock validate OTP - auto-approve for testing"""
+    return {
+        "response": {
+            "message": "OTP validated successfully",
+            "userId": "test@example.com",
+            "status": "true"
+        },
+        "errors": None
+    }
+
+@app.post("/preregistration/v1/login/invalidateToken")
+async def mosip_invalidate_token(request: dict = None):
+    """Mock invalidate token for logout"""
+    from datetime import datetime
+    return {
+        "response": {
+            "message": "Token invalidated successfully",
+            "status": "true"
+        },
+        "responsetime": datetime.utcnow().isoformat() + "Z",
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/applications/config")
+async def mosip_app_config():
+    """Mock application configuration"""
+    return {
+        "response": {
+            "mosip.left-to-right-orientation": "eng,fra",
+            "mosip.supported-languages": "eng,ara,fra",
+            "mosip.primary-language": "eng",
+            "preregistration.document.extention": "pdf,jpg,jpeg,png"
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/sync/masterdata")
+async def mosip_masterdata():
+    """Mock master data sync"""
+    return {
+        "response": {
+            "languages": [
+                {"code": "eng", "name": "English"},
+                {"code": "ara", "name": "Arabic"},
+                {"code": "fra", "name": "French"}
+            ]
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/templates/{lang_code}/TOSP")
+async def mosip_templates(lang_code: str):
+    """Mock templates"""
+    return {
+        "response": {"templates": []},
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/applications")
+async def mosip_get_applications():
+    """Mock get applications list"""
+    return {
+        "response": {
+            "basicDetails": [],
+            "totalRecords": 0
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/uispec/latest")
+async def mosip_uispec():
+    """Mock UI specification with proper labelName structure"""
+    # Each field needs labelName with language keys
+    def make_field(field_id, label_eng, label_ara, control_type, field_type="simpleType", required=True, is_dynamic=False, alignment_group=1, location_hierarchy_level=None):
+        field = {
+            "id": field_id,
+            "inputRequired": True,
+            "controlType": control_type,
+            "type": field_type,
+            "required": required,
+            "validators": [],
+            "labelName": {"eng": label_eng, "ara": label_ara, "fra": label_eng},
+            "fieldType": "dynamic" if is_dynamic else "default",
+            "alignmentGroup": alignment_group,
+            "isVisible": True
+        }
+        if location_hierarchy_level is not None:
+            field["locationHierarchyLevel"] = location_hierarchy_level
+        return field
+    
+    return {
+        "response": {
+            "jsonSpec": {
+                "identity": {
+                    "identity": [
+                        make_field("fullName", "Full Name", "الاسم الكامل", "textbox", alignment_group=1),
+                        make_field("dateOfBirth", "Date of Birth", "تاريخ الولادة", "ageDate", "string", alignment_group=1),
+                        make_field("gender", "Gender", "جنس", "dropdown", is_dynamic=True, alignment_group=1),
+                        make_field("residenceStatus", "Residence Status", "حالة الإقامة", "dropdown", is_dynamic=True, alignment_group=2),
+                        make_field("addressLine1", "Address Line 1", "العنوان", "textbox", required=False, alignment_group=2),
+                        make_field("region", "Region", "منطقة", "dropdown", alignment_group=3, location_hierarchy_level=1),
+                        make_field("province", "Province", "مقاطعة", "dropdown", alignment_group=3, location_hierarchy_level=2),
+                        make_field("city", "City", "مدينة", "dropdown", alignment_group=3, location_hierarchy_level=5),
+                        make_field("phone", "Phone", "هاتف", "textbox", "string", required=False, alignment_group=4),
+                        make_field("email", "Email", "بريد إلكتروني", "textbox", "string", required=False, alignment_group=4),
+                    ],
+                    "locationHierarchy": ["region", "province", "city"]
+                }
+            },
+            "idSchemaVersion": "0.1"
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/applications/prereg")
+async def mosip_prereg_applications():
+    """Mock pre-registration applications list - returns stored applications"""
+    import uuid
+    from datetime import datetime
+    
+    # If no applications exist, create a default one
+    if not mosip_applications:
+        default_prid = str(uuid.uuid4())[:14].replace("-", "").upper()
+        mosip_applications[default_prid] = {
+            "preRegistrationId": default_prid,
+            "statusCode": "Pending_Appointment",
+            "createdDateTime": datetime.now().isoformat() + "Z",
+            "demographicDetails": {
+                "identity": {
+                    "fullName": [{"language": "eng", "value": "Test User"}],
+                    "dateOfBirth": "1990/01/01",
+                    "gender": [{"language": "eng", "value": "Male"}],
+                    "phone": "0612345678",
+                    "email": "test@example.com",
+                    "postalCode": "10000"
+                }
+            }
+        }
+    
+    # Build the response from stored applications
+    basic_details = []
+    for prid, app_data in mosip_applications.items():
+        demo_details = app_data.get("demographicDetails", {})
+        identity = demo_details.get("identity", demo_details)
+        
+        basic_details.append({
+            "preRegistrationId": prid,
+            "statusCode": app_data.get("statusCode", "Pending_Appointment"),
+            "createdDateTime": app_data.get("createdDateTime", "2024-01-01T00:00:00.000Z"),
+            "modify_at_DemoPreview": True,
+            "langCode": "eng",
+            "dataCaptureLanguage": ["eng"],
+            "demographicMetadata": {
+                "fullName": identity.get("fullName", [{"language": "eng", "value": "User"}]),
+                "dateOfBirth": identity.get("dateOfBirth", "1990/01/01"),
+                "gender": identity.get("gender", [{"language": "eng", "value": "Male"}]),
+                "phone": identity.get("phone", ""),
+                "email": identity.get("email", ""),
+                "postalCode": identity.get("postalCode", "")
+            }
+        })
+    
+    return {
+        "response": {
+            "basicDetails": basic_details,
+            "totalRecords": len(basic_details)
+        },
+        "errors": None
+    }
+
+@app.post("/preregistration/v1/applications")
+async def mosip_create_application(request: dict = None):
+    """Mock create new application"""
+    import uuid
+    prid = str(uuid.uuid4())[:14].replace("-", "").upper()
+    return {
+        "response": {
+            "preRegistrationId": prid,
+            "createdDateTime": "2024-01-01T00:00:00.000Z",
+            "statusCode": "Pending_Appointment"
+        },
+        "errors": None
+    }
+
+@app.delete("/preregistration/v1/applications/prereg/{prid}")
+async def mosip_delete_application(prid: str):
+    """Mock delete pre-registration application - actually removes from storage"""
+    from datetime import datetime
+    
+    # Actually remove the application from our mock storage
+    if prid in mosip_applications:
+        del mosip_applications[prid]
+        print(f"🗑️ Deleted application {prid}")
+    else:
+        print(f"⚠️ Application {prid} not found in storage, but returning success anyway")
+    
+    return {
+        "response": {
+            "preRegistrationId": prid,
+            "deletedDateTime": datetime.now().isoformat() + "Z",
+            "message": "Application deleted successfully"
+        },
+        "errors": None
+    }
+
+@app.put("/preregistration/v1/applications/prereg/{prid}")
+async def mosip_update_application(prid: str, request: Request):
+    """Mock update pre-registration application - stores the data"""
+    try:
+        body = await request.json()
+        # Store the submitted data
+        mosip_applications[prid] = {
+            "preRegistrationId": prid,
+            "demographicDetails": body.get("request", {}).get("demographicDetails", body),
+            "statusCode": "Pending_Appointment",
+            "updatedDateTime": "2024-01-01T00:00:00.000Z"
+        }
+        print(f"✅ Stored application {prid}: {mosip_applications[prid]}")
+    except Exception as e:
+        print(f"Error storing application: {e}")
+    
+    return {
+        "response": {
+            "preRegistrationId": prid,
+            "updatedDateTime": "2024-01-01T00:00:00.000Z",
+            "statusCode": "Pending_Appointment",
+            "message": "Application updated successfully"
+        },
+        "errors": None
+    }
+
+@app.post("/preregistration/v1/applications/prereg")
+async def mosip_submit_prereg(request: dict = None):
+    """Mock submit pre-registration"""
+    import uuid  
+    prid = str(uuid.uuid4())[:14].replace("-", "").upper()
+    return {
+        "response": {
+            "preRegistrationId": prid,
+            "createdDateTime": "2024-01-01T00:00:00.000Z",
+            "statusCode": "Pending_Appointment"
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/applications/prereg/status/{prid}")
+async def mosip_get_app_status(prid: str):
+    """Mock get application status"""
+    return {
+        "response": {
+            "preRegistrationId": prid,
+            "statusCode": "Pending_Appointment"
+        },
+        "errors": None
+    }
+
+@app.put("/preregistration/v1/applications/prereg/status/{prid}")
+async def mosip_update_app_status(prid: str, request: dict = None):
+    """Mock update application status"""
+    return {
+        "response": {
+            "preRegistrationId": prid,
+            "statusCode": "Pending_Appointment"
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/applications/prereg/{prid}")
+async def mosip_get_application(prid: str):
+    """Mock get application by PRID - returns stored data if available"""
+    # Check if we have stored data for this PRID
+    if prid in mosip_applications:
+        stored = mosip_applications[prid]
+        print(f"📖 Returning stored application {prid}")
+        print(f"📖 Stored data: {stored}")
+        
+        # Ensure the demographicDetails has proper structure
+        demo_details = stored.get("demographicDetails", {})
+        identity = demo_details.get("identity", demo_details)
+        
+        # Build proper identity structure with arrays for all multilingual fields
+        proper_identity = {
+            "fullName": identity.get("fullName") if isinstance(identity.get("fullName"), list) else [{"language": "eng", "value": str(identity.get("fullName", identity.get("fullName_eng", "User")))}],
+            "dateOfBirth": identity.get("dateOfBirth", "1990/01/01"),
+            "gender": identity.get("gender") if isinstance(identity.get("gender"), list) else [{"language": "eng", "value": "Male"}],
+            "residenceStatus": identity.get("residenceStatus") if isinstance(identity.get("residenceStatus"), list) else [{"language": "eng", "value": "Non-Foreigner"}],
+            "region": identity.get("region") if isinstance(identity.get("region"), list) else [{"language": "eng", "value": "Rabat-Salé-Kénitra"}],
+            "province": identity.get("province") if isinstance(identity.get("province"), list) else [{"language": "eng", "value": "Rabat"}],
+            "city": identity.get("city") if isinstance(identity.get("city"), list) else [{"language": "eng", "value": "Rabat City"}],
+            "postalCode": identity.get("postalCode", "10000"),
+            "phone": identity.get("phone", "0612345678"),
+            "email": identity.get("email", "test@example.com")
+        }
+        
+        print(f"📖 Proper identity: {proper_identity}")
+        
+        return {
+            "response": {
+                "preRegistrationId": prid,
+                "createdDateTime": "2024-01-01T00:00:00.000Z",
+                "statusCode": stored.get("statusCode", "Pending_Appointment"),
+                "modify_at_DemoPreview": True,
+                "langCode": "eng",
+                "demographicDetails": {"identity": proper_identity},
+                "documents": []
+            },
+            "errors": None
+        }
+    
+    # Default response for new applications
+    return {
+        "response": {
+            "preRegistrationId": prid,
+            "createdDateTime": "2024-01-01T00:00:00.000Z",
+            "statusCode": "Pending_Appointment",
+            "modify_at_DemoPreview": True,
+            "langCode": "eng",
+            "demographicDetails": {
+                "identity": {
+                    "fullName": [{"language": "eng", "value": "Test User"}],
+                    "dateOfBirth": "1990/01/01",
+                    "gender": [{"language": "eng", "value": "Male"}],
+                    "residenceStatus": [{"language": "eng", "value": "Non-Foreigner"}],
+                    "region": [{"language": "eng", "value": "Rabat-Salé-Kénitra"}],
+                    "province": [{"language": "eng", "value": "Rabat"}],
+                    "city": [{"language": "eng", "value": "Rabat City"}],
+                    "postalCode": "10000",
+                    "phone": "0612345678",
+                    "email": "test@example.com"
+                }
+            },
+            "documents": []
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/documents/preregistration/{prid}")
+async def mosip_get_documents(prid: str):
+    """Mock get documents for application"""
+    return {
+        "response": {
+            "documentsMetaData": []
+        },
+        "errors": None
+    }
+
+@app.post("/preregistration/v1/proxy/masterdata/getApplicantType")
+async def mosip_get_applicant_type(request: dict = None):
+    """Mock get applicant type"""
+    return {
+        "response": {
+            "applicantType": {
+                "applicantTypeCode": "001"
+            }
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/applicanttype/{app_type}/languages")
+async def mosip_applicant_type_docs(app_type: str, languages: str = None):
+    """Mock get document categories for applicant type"""
+    return {
+        "response": {
+            "documentCategories": [
+                {
+                    "code": "POI",
+                    "description": "Proof of Identity",
+                    "langCode": "eng",
+                    "documentTypes": [
+                        {"code": "PASSPORT", "description": "Passport", "langCode": "eng"},
+                        {"code": "IDCARD", "description": "National ID Card", "langCode": "eng"}
+                    ]
+                },
+                {
+                    "code": "POA",
+                    "description": "Proof of Address",
+                    "langCode": "eng",
+                    "documentTypes": [
+                        {"code": "UTILITY", "description": "Utility Bill", "langCode": "eng"},
+                        {"code": "BANK", "description": "Bank Statement", "langCode": "eng"}
+                    ]
+                }
+            ]
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/validdocuments/{app_type}/languages")
+async def mosip_valid_documents(app_type: str, langCode: str = None):
+    """Mock valid documents for applicant type"""
+    return {
+        "response": {
+            "documentCategories": [
+                {
+                    "code": "POI",
+                    "description": "Proof of Identity",
+                    "langCode": langCode or "eng",
+                    "documentTypes": [
+                        {"code": "PASSPORT", "description": "Passport", "langCode": langCode or "eng"},
+                        {"code": "IDCARD", "description": "National ID Card", "langCode": langCode or "eng"}
+                    ]
+                },
+                {
+                    "code": "POA",
+                    "description": "Proof of Address",
+                    "langCode": langCode or "eng",
+                    "documentTypes": [
+                        {"code": "UTILITY", "description": "Utility Bill", "langCode": langCode or "eng"},
+                        {"code": "BANK", "description": "Bank Statement", "langCode": langCode or "eng"}
+                    ]
+                }
+            ]
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/dynamicfields")
+async def mosip_dynamic_fields(langCode: str = None, pageNumber: str = None, pageSize: str = None):
+    """Mock dynamic fields for dropdowns with proper format"""
+    return {
+        "response": {
+            "data": [
+                {
+                    "name": "gender",
+                    "langCode": "eng",
+                    "dataType": "string",
+                    "fieldVal": [
+                        {"code": "MLE", "value": "Male"},
+                        {"code": "FLE", "value": "Female"}
+                    ]
+                },
+                {
+                    "name": "gender",
+                    "langCode": "ara",
+                    "dataType": "string",
+                    "fieldVal": [
+                        {"code": "MLE", "value": "ذكر"},
+                        {"code": "FLE", "value": "أنثى"}
+                    ]
+                },
+                {
+                    "name": "residenceStatus",
+                    "langCode": "eng",
+                    "dataType": "string",
+                    "fieldVal": [
+                        {"code": "FR", "value": "Foreigner"},
+                        {"code": "NFR", "value": "Non-Foreigner"}
+                    ]
+                },
+                {
+                    "name": "residenceStatus",
+                    "langCode": "ara",
+                    "dataType": "string",
+                    "fieldVal": [
+                        {"code": "FR", "value": "أجنبي"},
+                        {"code": "NFR", "value": "غير أجنبي"}
+                    ]
+                }
+            ],
+            "pageNo": 0,
+            "totalPages": 1,
+            "totalItems": 4
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/locations/immediatechildren/{loc_code}/{lang_code}")
+async def mosip_location_children(loc_code: str, lang_code: str):
+    """Mock location hierarchy - returns children based on parent location"""
+    # Location hierarchy: MOR (country) -> regions -> provinces -> cities
+    location_data = {
+        "MOR": [  # Morocco regions
+            {"code": "RSK", "name": "Rabat-Salé-Kénitra", "hierarchyLevel": 1, "isActive": True, "langCode": lang_code},
+            {"code": "CMK", "name": "Casablanca-Settat", "hierarchyLevel": 1, "isActive": True, "langCode": lang_code},
+            {"code": "TTA", "name": "Tanger-Tetouan-Al Hoceima", "hierarchyLevel": 1, "isActive": True, "langCode": lang_code}
+        ],
+        "RSK": [  # Rabat-Salé-Kénitra provinces
+            {"code": "RBT", "name": "Rabat", "hierarchyLevel": 2, "isActive": True, "langCode": lang_code},
+            {"code": "SLE", "name": "Salé", "hierarchyLevel": 2, "isActive": True, "langCode": lang_code},
+            {"code": "KNT", "name": "Kénitra", "hierarchyLevel": 2, "isActive": True, "langCode": lang_code}
+        ],
+        "CMK": [  # Casablanca provinces
+            {"code": "CSB", "name": "Casablanca", "hierarchyLevel": 2, "isActive": True, "langCode": lang_code},
+            {"code": "MDQ", "name": "Mohammedia", "hierarchyLevel": 2, "isActive": True, "langCode": lang_code}
+        ],
+        "RBT": [  # Rabat cities
+            {"code": "RBT1", "name": "Rabat City", "hierarchyLevel": 3, "isActive": True, "langCode": lang_code},
+            {"code": "AGD", "name": "Agdal", "hierarchyLevel": 3, "isActive": True, "langCode": lang_code}
+        ],
+        "SLE": [  # Salé cities
+            {"code": "SLE1", "name": "Salé City", "hierarchyLevel": 3, "isActive": True, "langCode": lang_code}
+        ],
+        "CSB": [  # Casablanca cities
+            {"code": "CSB1", "name": "Casablanca Center", "hierarchyLevel": 3, "isActive": True, "langCode": lang_code},
+            {"code": "ANF", "name": "Anfa", "hierarchyLevel": 3, "isActive": True, "langCode": lang_code}
+        ]
+    }
+    
+    # Return locations for this parent, or default if not found
+    locations = location_data.get(loc_code, location_data.get("MOR", []))
+    
+    return {
+        "response": {
+            "locations": locations
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/templates/templatetypecodes/{type_code}")
+async def mosip_templates_by_type(type_code: str):
+    """Mock templates by type code"""
+    return {
+        "response": {
+            "templates": [
+                {"langCode": "eng", "fileText": "I agree to the terms and conditions for pre-registration."},
+                {"langCode": "ara", "fileText": "أوافق على الشروط والأحكام للتسجيل المسبق."},
+                {"langCode": "fra", "fileText": "J'accepte les termes et conditions pour la pré-inscription."}
+            ]
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/documenttypes/{category}/{lang_code}")
+async def mosip_document_types(category: str, lang_code: str):
+    """Mock document types"""
+    return {
+        "response": {
+            "documenttypes": [
+                {"code": "POI", "name": "Proof of Identity", "description": "Proof of Identity", "isActive": True},
+                {"code": "POA", "name": "Proof of Address", "description": "Proof of Address", "isActive": True}
+            ]
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/documentcategories/{lang_code}")
+async def mosip_document_categories(lang_code: str):
+    """Mock document categories"""
+    return {
+        "response": {
+            "documentcategories": [
+                {"code": "POI", "name": "Proof of Identity", "description": "Proof of Identity", "isActive": True},
+                {"code": "POA", "name": "Proof of Address", "description": "Proof of Address", "isActive": True}
+            ]
+        },
+        "errors": None
+    }
+
+@app.post("/preregistration/v1/logAudit")
+async def mosip_log_audit(request: dict = None):
+    """Mock audit logging - just accepts and returns success"""
+    return {
+        "response": {"status": "success"},
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/locations/info/{loc_code}/{lang_code}")
+async def mosip_location_info(loc_code: str, lang_code: str):
+    """Mock get location info by code - returns name for center selection"""
+    # Map location codes to names
+    location_names = {
+        "RABAT_CITY": "Rabat City",
+        "RSK": "Rabat-Salé-Kénitra",
+        "RABAT": "Rabat",
+        "AGDAL": "Agdal",
+        "CASABLANCA": "Casablanca",
+        "CK": "Casablanca-Settat"
+    }
+    name = location_names.get(loc_code, loc_code.replace("_", " ").title())
+    
+    return {
+        "response": {
+            "code": loc_code,
+            "name": name,
+            "hierarchyLevel": 3,
+            "hierarchyName": "City",
+            "parentLocCode": "RSK",
+            "langCode": lang_code,
+            "isActive": True
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/locationHierarchyLevels/{lang_code}")
+async def mosip_location_hierarchy_levels(lang_code: str):
+    """Mock get location hierarchy levels"""
+    return {
+        "response": {
+            "locationHierarchyLevels": [
+                {"hierarchyLevel": 0, "hierarchyLevelName": "Country", "langCode": lang_code, "isActive": True},
+                {"hierarchyLevel": 1, "hierarchyLevelName": "Region", "langCode": lang_code, "isActive": True},
+                {"hierarchyLevel": 2, "hierarchyLevelName": "Province", "langCode": lang_code, "isActive": True},
+                {"hierarchyLevel": 3, "hierarchyLevelName": "City", "langCode": lang_code, "isActive": True},
+                {"hierarchyLevel": 4, "hierarchyLevelName": "Zone", "langCode": lang_code, "isActive": True},
+                {"hierarchyLevel": 5, "hierarchyLevelName": "Postal Code", "langCode": lang_code, "isActive": True}
+            ]
+        },
+        "errors": None
+    }
+
+# ============== BOOKING APPOINTMENT ENDPOINTS ==============
+
+@app.get("/preregistration/v1/booking/regcenters")
+async def mosip_booking_regcenters():
+    """Mock get registration centers for booking"""
+    return {
+        "response": {
+            "registrationCenters": [
+                {
+                    "id": "10001",
+                    "name": "MOSIP Registration Center 1",
+                    "centerTypeCode": "REG",
+                    "addressLine1": "123 Main Street",
+                    "addressLine2": "Downtown",
+                    "addressLine3": "",
+                    "latitude": "33.9716",
+                    "longitude": "-6.8498",
+                    "locationCode": "RABAT_CITY",
+                    "holidayLocationCode": "RABAT",
+                    "contactPhone": "+212-537-123456",
+                    "workingHours": "9:00 AM - 5:00 PM",
+                    "langCode": "eng",
+                    "numberOfKiosks": 5,
+                    "perKioskProcessTime": "00:15:00",
+                    "centerStartTime": "09:00:00",
+                    "centerEndTime": "17:00:00",
+                    "lunchStartTime": "13:00:00",
+                    "lunchEndTime": "14:00:00",
+                    "timeZone": "Africa/Casablanca",
+                    "isActive": True
+                },
+                {
+                    "id": "10002",
+                    "name": "MOSIP Registration Center 2",
+                    "centerTypeCode": "REG",
+                    "addressLine1": "456 Avenue Hassan II",
+                    "addressLine2": "City Center",
+                    "addressLine3": "",
+                    "latitude": "33.5731",
+                    "longitude": "-7.5898",
+                    "locationCode": "CASABLANCA",
+                    "holidayLocationCode": "CASABLANCA",
+                    "contactPhone": "+212-522-654321",
+                    "workingHours": "8:00 AM - 4:00 PM",
+                    "langCode": "eng",
+                    "numberOfKiosks": 8,
+                    "perKioskProcessTime": "00:15:00",
+                    "centerStartTime": "08:00:00",
+                    "centerEndTime": "16:00:00",
+                    "lunchStartTime": "12:00:00",
+                    "lunchEndTime": "13:00:00",
+                    "timeZone": "Africa/Casablanca",
+                    "isActive": True
+                }
+            ]
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/booking/availability/{regcenter_id}")
+async def mosip_booking_availability(regcenter_id: str):
+    """Mock get available slots for a registration center"""
+    from datetime import datetime, timedelta
+    
+    # Generate slots for next 7 days
+    slots = []
+    today = datetime.now()
+    for day in range(1, 8):
+        date = today + timedelta(days=day)
+        date_str = date.strftime("%Y-%m-%d")
+        # Skip weekends
+        if date.weekday() < 5:
+            slots.append({
+                "date": date_str,
+                "timeslots": [
+                    {"fromTime": "09:00:00", "toTime": "09:15:00", "availability": 5},
+                    {"fromTime": "09:15:00", "toTime": "09:30:00", "availability": 5},
+                    {"fromTime": "09:30:00", "toTime": "09:45:00", "availability": 3},
+                    {"fromTime": "09:45:00", "toTime": "10:00:00", "availability": 4},
+                    {"fromTime": "10:00:00", "toTime": "10:15:00", "availability": 5},
+                    {"fromTime": "10:15:00", "toTime": "10:30:00", "availability": 5},
+                    {"fromTime": "14:00:00", "toTime": "14:15:00", "availability": 5},
+                    {"fromTime": "14:15:00", "toTime": "14:30:00", "availability": 4},
+                    {"fromTime": "14:30:00", "toTime": "14:45:00", "availability": 5},
+                    {"fromTime": "15:00:00", "toTime": "15:15:00", "availability": 3}
+                ]
+            })
+    
+    return {
+        "response": {
+            "regCenterId": regcenter_id,
+            "centerDetails": slots
+        },
+        "errors": None
+    }
+
+@app.post("/preregistration/v1/booking/appointment")
+async def mosip_book_appointment(request: Request):
+    """Mock book appointment"""
+    try:
+        body = await request.json()
+    except:
+        body = {}
+    
+    return {
+        "response": {
+            "bookingMessage": "Appointment booked successfully",
+            "preRegistrationId": body.get("request", {}).get("preRegistrationId", "MOCK123"),
+            "registration_center_id": body.get("request", {}).get("registration_center_id", "10001"),
+            "appointment_date": body.get("request", {}).get("appointment_date", "2024-01-15"),
+            "time_slot_from": body.get("request", {}).get("time_slot_from", "09:00:00"),
+            "time_slot_to": body.get("request", {}).get("time_slot_to", "09:15:00")
+        },
+        "errors": None
+    }
+
+@app.post("/preregistration/v1/applications/appointment")
+async def mosip_applications_appointment(request: Request):
+    """Mock book appointment via applications path"""
+    try:
+        body = await request.json()
+    except:
+        body = {}
+    
+    booking_request = body.get("request", {}).get("bookingRequest", [])
+    
+    return {
+        "response": {
+            "bookingStatusResponse": [
+                {
+                    "bookingMessage": "Appointment booked successfully",
+                    "preRegistrationId": item.get("preRegistrationId", "MOCK123"),
+                    "registration_center_id": item.get("registration_center_id", "10001"),
+                    "appointment_date": item.get("appointment_date", "2024-01-15"),
+                    "time_slot_from": item.get("time_slot_from", "09:00:00"),
+                    "time_slot_to": item.get("time_slot_to", "09:15:00")
+                } for item in (booking_request if booking_request else [body.get("request", {})])
+            ]
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/applications/appointment/{prid}")
+async def mosip_get_applications_appointment(prid: str):
+    """Mock get appointment details for acknowledgement"""
+    from datetime import datetime, timedelta
+    
+    # Generate a future appointment date
+    appointment_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+    
+    return {
+        "response": {
+            "preRegistrationId": prid,
+            "registration_center_id": "10001",
+            "appointment_date": appointment_date,
+            "time_slot_from": "09:00",
+            "time_slot_to": "09:15",
+            "statusCode": "Booked"
+        },
+        "errors": None
+    }
+
+@app.put("/preregistration/v1/applications/appointment/{prid}")
+async def mosip_cancel_applications_appointment(prid: str, request: Request):
+    """Mock cancel appointment - this is the endpoint used by the Angular UI to cancel appointments"""
+    try:
+        body = await request.json()
+    except:
+        body = {}
+    
+    # Update the application status in our mock storage
+    if prid in mosip_applications:
+        mosip_applications[prid]["statusCode"] = "Cancelled"
+    
+    return {
+        "response": {
+            "transactionId": f"txn_{prid}",
+            "preRegistrationId": prid,
+            "message": "Appointment cancelled successfully",
+            "deletedDateTime": datetime.now().isoformat() + "Z"
+        },
+        "errors": None
+    }
+
+@app.put("/preregistration/v1/booking/appointment/{prid}")
+async def mosip_update_appointment(prid: str, request: Request):
+    """Mock update/reschedule appointment"""
+    try:
+        body = await request.json()
+    except:
+        body = {}
+    
+    return {
+        "response": {
+            "bookingMessage": "Appointment updated successfully",
+            "preRegistrationId": prid
+        },
+        "errors": None
+    }
+
+@app.delete("/preregistration/v1/booking/appointment/{prid}")
+async def mosip_cancel_appointment(prid: str):
+    """Mock cancel appointment"""
+    return {
+        "response": {
+            "message": "Appointment cancelled successfully",
+            "preRegistrationId": prid
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/booking/appointment/{prid}")
+async def mosip_get_appointment(prid: str):
+    """Mock get appointment details"""
+    return {
+        "response": {
+            "preRegistrationId": prid,
+            "registration_center_id": "10001",
+            "registration_center_name": "MOSIP Registration Center 1",
+            "appointment_date": "2024-01-15",
+            "time_slot_from": "09:00:00",
+            "time_slot_to": "09:15:00"
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/registrationcenters/{lang_code}/{hierarchy_level}/names")
+async def mosip_regcenters_by_names(lang_code: str, hierarchy_level: str, name: str = None):
+    """Mock get registration centers by location names (query param)"""
+    return {
+        "response": {
+            "registrationCenters": [
+                {
+                    "id": "10001",
+                    "name": "MOSIP Registration Center - Rabat",
+                    "centerTypeCode": "REG",
+                    "addressLine1": "123 Main Street, Downtown",
+                    "addressLine2": "Near City Hall",
+                    "latitude": "33.9716",
+                    "longitude": "-6.8498",
+                    "locationCode": "RABAT_CITY",
+                    "langCode": lang_code,
+                    "numberOfKiosks": 5,
+                    "perKioskProcessTime": "00:15:00",
+                    "centerStartTime": "09:00:00",
+                    "centerEndTime": "17:00:00",
+                    "lunchStartTime": "13:00:00",
+                    "lunchEndTime": "14:00:00",
+                    "isActive": True
+                },
+                {
+                    "id": "10002",
+                    "name": "MOSIP Registration Center - Agdal",
+                    "centerTypeCode": "REG",
+                    "addressLine1": "456 Agdal Avenue",
+                    "addressLine2": "Business District",
+                    "latitude": "33.989523",
+                    "longitude": "-6.849813",
+                    "locationCode": "AGDAL",
+                    "langCode": lang_code,
+                    "numberOfKiosks": 3,
+                    "perKioskProcessTime": "00:15:00",
+                    "centerStartTime": "09:00:00",
+                    "centerEndTime": "17:00:00",
+                    "lunchStartTime": "12:30:00",
+                    "lunchEndTime": "13:30:00",
+                    "isActive": True
+                }
+            ]
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/getcoordinatespecificregistrationcenters/{lang_code}/{longitude}/{latitude}/{distance}")
+async def mosip_nearby_centers(lang_code: str, longitude: str, latitude: str, distance: str = None):
+    """Mock get nearby registration centers by coordinates"""
+    return {
+        "response": {
+            "registrationCenters": [
+                {
+                    "id": "10001",
+                    "name": "MOSIP Registration Center - Nearby",
+                    "centerTypeCode": "REG",
+                    "addressLine1": "Nearest Location",
+                    "addressLine2": "Near Your Location",
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "locationCode": "NEARBY",
+                    "langCode": lang_code,
+                    "numberOfKiosks": 5,
+                    "perKioskProcessTime": "00:15:00",
+                    "centerStartTime": "09:00:00",
+                    "centerEndTime": "17:00:00",
+                    "lunchStartTime": "13:00:00",
+                    "lunchEndTime": "14:00:00",
+                    "isActive": True
+                },
+                {
+                    "id": "10002",
+                    "name": "MOSIP Registration Center - City",
+                    "centerTypeCode": "REG",
+                    "addressLine1": "City Center Location",
+                    "addressLine2": "Downtown Area",
+                    "latitude": str(float(latitude) + 0.01),
+                    "longitude": str(float(longitude) + 0.01),
+                    "locationCode": "CITY_CENTER",
+                    "langCode": lang_code,
+                    "numberOfKiosks": 3,
+                    "perKioskProcessTime": "00:15:00",
+                    "centerStartTime": "09:00:00",
+                    "centerEndTime": "17:00:00",
+                    "lunchStartTime": "12:30:00",
+                    "lunchEndTime": "13:30:00",
+                    "isActive": True
+                }
+            ]
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/registrationcenters/{lang_code}/{hierarchy_level}/{location_codes}")
+async def mosip_registration_centers(lang_code: str, hierarchy_level: int, location_codes: str):
+    """Mock get registration centers"""
+    return {
+        "response": {
+            "registrationCenters": [
+                {
+                    "id": "10001",
+                    "name": "Rabat Central Registration Center",
+                    "centerTypeCode": "REG",
+                    "addressLine1": "123 Main Street",
+                    "addressLine2": "Building A",
+                    "addressLine3": "",
+                    "latitude": "34.020882",
+                    "longitude": "-6.841650",
+                    "locationCode": "RABAT_CITY",
+                    "holidayLocationCode": "RABAT",
+                    "contactPhone": "+212-537-123456",
+                    "workingHours": "9:00 AM - 5:00 PM",
+                    "langCode": lang_code,
+                    "numberOfKiosks": 5,
+                    "perKioskProcessTime": "00:15:00",
+                    "centerStartTime": "09:00:00",
+                    "centerEndTime": "17:00:00",
+                    "lunchStartTime": "13:00:00",
+                    "lunchEndTime": "14:00:00",
+                    "isActive": True
+                },
+                {
+                    "id": "10002",
+                    "name": "Agdal Registration Center",
+                    "centerTypeCode": "REG",
+                    "addressLine1": "456 Agdal Avenue",
+                    "latitude": "33.989523",
+                    "longitude": "-6.849813",
+                    "locationCode": "AGDAL",
+                    "langCode": lang_code,
+                    "numberOfKiosks": 3,
+                    "perKioskProcessTime": "00:15:00",
+                    "centerStartTime": "09:00:00",
+                    "centerEndTime": "17:00:00",
+                    "isActive": True
+                }
+            ]
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/workingdays/{center_id}/{lang_code}")
+async def mosip_working_days(center_id: str, lang_code: str):
+    """Mock get working days for a center"""
+    return {
+        "response": {
+            "workingdays": [
+                {"code": "101", "name": "MON", "dayCode": "1", "langCode": lang_code, "isActive": True, "isWorking": True},
+                {"code": "102", "name": "TUE", "dayCode": "2", "langCode": lang_code, "isActive": True, "isWorking": True},
+                {"code": "103", "name": "WED", "dayCode": "3", "langCode": lang_code, "isActive": True, "isWorking": True},
+                {"code": "104", "name": "THU", "dayCode": "4", "langCode": lang_code, "isActive": True, "isWorking": True},
+                {"code": "105", "name": "FRI", "dayCode": "5", "langCode": lang_code, "isActive": True, "isWorking": True},
+                {"code": "106", "name": "SAT", "dayCode": "6", "langCode": lang_code, "isActive": True, "isWorking": False},
+                {"code": "107", "name": "SUN", "dayCode": "7", "langCode": lang_code, "isActive": True, "isWorking": False}
+            ]
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/exceptionalholidays/{center_id}/{lang_code}")
+async def mosip_exceptional_holidays(center_id: str, lang_code: str):
+    """Mock get exceptional holidays"""
+    return {
+        "response": {
+            "exceptionalHolidayList": []
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/blocklistedwords/{lang_code}")
+async def mosip_blocklisted_words(lang_code: str):
+    """Mock get blocklisted words"""
+    return {
+        "response": {
+            "blockListedWords": []
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/appointment/availability/{center_id}")
+async def mosip_appointment_availability(center_id: str):
+    """Mock get appointment slots availability"""
+    from datetime import datetime, timedelta
+    
+    # Generate available slots for next 30 days
+    slots = []
+    today = datetime.now()
+    
+    for i in range(30):
+        date = today + timedelta(days=i)
+        if date.weekday() < 5:  # Monday to Friday
+            slots.append({
+                "date": date.strftime("%Y-%m-%d"),
+                "timeslots": [
+                    {"fromTime": "09:00:00", "toTime": "09:15:00", "availability": 5},
+                    {"fromTime": "09:15:00", "toTime": "09:30:00", "availability": 5},
+                    {"fromTime": "09:30:00", "toTime": "09:45:00", "availability": 5},
+                    {"fromTime": "09:45:00", "toTime": "10:00:00", "availability": 5},
+                    {"fromTime": "10:00:00", "toTime": "10:15:00", "availability": 5},
+                    {"fromTime": "10:15:00", "toTime": "10:30:00", "availability": 5},
+                    {"fromTime": "10:30:00", "toTime": "10:45:00", "availability": 5},
+                    {"fromTime": "10:45:00", "toTime": "11:00:00", "availability": 5},
+                    {"fromTime": "11:00:00", "toTime": "11:15:00", "availability": 5},
+                    {"fromTime": "11:15:00", "toTime": "11:30:00", "availability": 5},
+                    {"fromTime": "14:00:00", "toTime": "14:15:00", "availability": 5},
+                    {"fromTime": "14:15:00", "toTime": "14:30:00", "availability": 5},
+                    {"fromTime": "14:30:00", "toTime": "14:45:00", "availability": 5},
+                    {"fromTime": "14:45:00", "toTime": "15:00:00", "availability": 5},
+                    {"fromTime": "15:00:00", "toTime": "15:15:00", "availability": 5},
+                    {"fromTime": "15:15:00", "toTime": "15:30:00", "availability": 5},
+                    {"fromTime": "16:00:00", "toTime": "16:15:00", "availability": 5},
+                    {"fromTime": "16:15:00", "toTime": "16:30:00", "availability": 5}
+                ],
+                "holiday": False
+            })
+    
+    return {
+        "response": {
+            "regCenterId": center_id,
+            "centerDetails": slots
+        },
+        "errors": None
+    }
+
+@app.post("/preregistration/v1/appointment/{prid}")
+async def mosip_book_appointment(prid: str, request: dict = None):
+    """Mock book appointment"""
+    return {
+        "response": {
+            "preRegistrationId": prid,
+            "message": "Appointment booked successfully",
+            "bookingDataPrimary": request.get("bookingRequest") if request else {}
+        },
+        "errors": None
+    }
+
+@app.delete("/preregistration/v1/appointment/{prid}")
+async def mosip_cancel_appointment(prid: str):
+    """Mock cancel appointment"""
+    return {
+        "response": {
+            "preRegistrationId": prid,
+            "message": "Appointment cancelled successfully"
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/appointment/{prid}")
+async def mosip_get_appointment(prid: str):
+    """Mock get appointment details"""
+    return {
+        "response": {
+            "preRegistrationId": prid,
+            "registration_center_id": "10001",
+            "appointment_date": "2024-12-20",
+            "time_slot_from": "10:00:00",
+            "time_slot_to": "10:15:00"
+        },
+        "errors": None
+    }
+
+# ============== APPOINTMENT SLOTS ENDPOINT ==============
+
+@app.get("/preregistration/v1/applications/appointment/slots/availability/{center_id}")
+async def mosip_appointment_slots_availability(center_id: str):
+    """Mock get appointment slots availability for booking"""
+    from datetime import datetime, timedelta
+    
+    slots = []
+    today = datetime.now()
+    
+    for i in range(1, 15):  # Next 14 days
+        date = today + timedelta(days=i)
+        if date.weekday() < 5:  # Weekdays only
+            slots.append({
+                "date": date.strftime("%Y-%m-%d"),
+                "timeSlots": [
+                    {"fromTime": "09:00", "toTime": "09:15", "availability": 5},
+                    {"fromTime": "09:15", "toTime": "09:30", "availability": 5},
+                    {"fromTime": "09:30", "toTime": "09:45", "availability": 4},
+                    {"fromTime": "10:00", "toTime": "10:15", "availability": 6},
+                    {"fromTime": "10:15", "toTime": "10:30", "availability": 5},
+                    {"fromTime": "11:00", "toTime": "11:15", "availability": 5},
+                    {"fromTime": "14:00", "toTime": "14:15", "availability": 5},
+                    {"fromTime": "14:15", "toTime": "14:30", "availability": 4},
+                    {"fromTime": "15:00", "toTime": "15:15", "availability": 5},
+                    {"fromTime": "15:15", "toTime": "15:30", "availability": 5}
+                ]
+            })
+    
+    return {
+        "response": {
+            "regCenterId": center_id,
+            "centerDetails": slots
+        },
+        "errors": None
+    }
+
+# ============== QR CODE ENDPOINT ==============
+
+@app.post("/preregistration/v1/qrCode/generate")
+async def mosip_generate_qrcode(request: Request):
+    """Mock generate QR code - returns simple valid base64 PNG"""
+    # Simple 50x50 gray QR code placeholder
+    return {
+        "response": {
+            "qrcode": "iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAIAAACRXR/mAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5wEBCjMfL8lKVAAAABl0RVh0Q29tbWVudABDcmVhdGVkIHdpdGggR0lNUFeBDhcAAABTSURBVFjD7c4xAQAgDASxyn/oAh4wwZ0EHr5tbWbeAgAAANiG/gIAAACghv4CAAAAAOjXX15eXl5eXl5eXl5eXl5eXl5eXl5eXl4AAAAAAPhvPwA/QwGlJ2wKJAAAAABJRU5ErkJggg=="
+        },
+        "errors": None
+    }
+
+# ============== NOTIFICATION ENDPOINTS ==============
+
+@app.post("/preregistration/v1/notification")
+async def mosip_send_notification(request: Request):
+    """Mock send notification"""
+    return {
+        "response": {
+            "message": "Notification sent successfully",
+            "status": "success"
+        },
+        "errors": None
+    }
+
+@app.post("/preregistration/v1/notification/notify")
+async def mosip_notify(request: Request):
+    """Mock notify endpoint"""
+    return {
+        "response": {
+            "message": "Notification sent successfully",
+            "status": "success"
+        },
+        "errors": None
+    }
+
+# ============== CAPTCHA ENDPOINT ==============
+
+@app.post("/preregistration/v1/captcha/validatecaptcha")
+async def mosip_validate_captcha(request: Request):
+    """Mock validate captcha"""
+    return {
+        "response": {
+            "success": True,
+            "message": "Captcha validated"
+        },
+        "errors": None
+    }
+
+# ============== TRANSLITERATION ENDPOINT ==============
+
+@app.post("/preregistration/v1/transliteration/transliterate")
+async def mosip_transliterate(request: Request):
+    """Mock transliteration"""
+    try:
+        body = await request.json()
+        from_value = body.get("request", {}).get("fromFieldValue", "")
+    except:
+        from_value = ""
+    
+    return {
+        "response": {
+            "toFieldValue": from_value
+        },
+        "errors": None
+    }
+
+# ============== REGISTRATION CENTER BY ID ENDPOINT ==============
+
+@app.get("/preregistration/v1/proxy/masterdata/registrationcenters/{center_id}/{lang_code}")
+async def mosip_regcenter_by_id(center_id: str, lang_code: str):
+    """Mock get registration center by ID"""
+    return {
+        "response": {
+            "registrationCenters": [
+                {
+                    "id": center_id,
+                    "name": f"MOSIP Registration Center {center_id}",
+                    "centerTypeCode": "REG",
+                    "addressLine1": "123 Main Street",
+                    "addressLine2": "Downtown",
+                    "latitude": "33.9716",
+                    "longitude": "-6.8498",
+                    "locationCode": "RABAT_CITY",
+                    "langCode": lang_code,
+                    "numberOfKiosks": 5,
+                    "perKioskProcessTime": "00:15:00",
+                    "centerStartTime": "09:00:00",
+                    "centerEndTime": "17:00:00",
+                    "lunchStartTime": "13:00:00",
+                    "lunchEndTime": "14:00:00",
+                    "isActive": True
+                }
+            ]
+        },
+        "errors": None
+    }
+
+# ============== PAGED REGISTRATION CENTERS ==============
+
+@app.get("/preregistration/v1/proxy/masterdata/registrationcenters/page/{lang_code}/{hierarchy_level}/{search_text}")
+async def mosip_regcenters_paged(lang_code: str, hierarchy_level: str, search_text: str, pageNumber: int = 0, pageSize: int = 10):
+    """Mock paged registration centers search"""
+    return {
+        "response": {
+            "registrationCenters": [
+                {
+                    "id": "10001",
+                    "name": f"MOSIP Center - {search_text}",
+                    "centerTypeCode": "REG",
+                    "addressLine1": "123 Main Street",
+                    "latitude": "33.9716",
+                    "longitude": "-6.8498",
+                    "locationCode": "RABAT_CITY",
+                    "langCode": lang_code,
+                    "numberOfKiosks": 5,
+                    "centerStartTime": "09:00:00",
+                    "centerEndTime": "17:00:00",
+                    "isActive": True
+                }
+            ],
+            "totalItems": 1,
+            "pageNo": pageNumber,
+            "totalPages": 1
+        },
+        "errors": None
+    }
+
+# ============== LOG AUDIT ENDPOINT ==============
+
+@app.post("/preregistration/v1/logAudit")
+async def mosip_log_audit(request: Request):
+    """Mock log audit"""
+    return {
+        "response": {
+            "status": "success"
+        },
+        "errors": None
+    }
+
+# ============== APPLICATION STATUS ENDPOINTS ==============
+
+@app.get("/preregistration/v1/applications/prereg/status/{prid}")
+async def mosip_get_app_status(prid: str):
+    """Mock get application status"""
+    return {
+        "response": {
+            "preRegistrationId": prid,
+            "statusCode": "Pending_Appointment"
+        },
+        "errors": None
+    }
+
+# ============== DOCUMENT ENDPOINTS ==============
+
+@app.post("/preregistration/v1/documents/{prid}")
+async def mosip_upload_document(prid: str, request: Request):
+    """Mock upload document"""
+    import uuid
+    doc_id = str(uuid.uuid4())[:8].upper()
+    return {
+        "response": {
+            "docId": doc_id,
+            "docName": "document.pdf",
+            "preRegistrationId": prid,
+            "docCatCode": "POI",
+            "docTypCode": "PASSPORT",
+            "statusCode": "Pending_Appointment"
+        },
+        "errors": None
+    }
+
+@app.delete("/preregistration/v1/documents/{doc_id}")
+async def mosip_delete_document(doc_id: str, preRegistrationId: str = None):
+    """Mock delete document"""
+    return {
+        "response": {
+            "message": "Document deleted successfully"
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/documents/{doc_id}")
+async def mosip_get_document(doc_id: str, preRegistrationId: str = None):
+    """Mock get document"""
+    return {
+        "response": {
+            "document": ""
+        },
+        "errors": None
+    }
+
+@app.put("/preregistration/v1/documents/document/{doc_id}")
+async def mosip_update_document_ref(doc_id: str, preRegistrationId: str = None, refNumber: str = None):
+    """Mock update document reference"""
+    return {
+        "response": {
+            "message": "Document reference updated"
+        },
+        "errors": None
+    }
+
+# ============== HOLIDAYS ENDPOINT ==============
+
+@app.get("/preregistration/v1/proxy/masterdata/holidays/{location_code}/{lang_code}")
+async def mosip_holidays(location_code: str, lang_code: str):
+    """Mock get holidays"""
+    return {
+        "response": {
+            "holidays": []
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/templates/templatetypecodes/{template_type}")
+async def mosip_templates_by_type(template_type: str):
+    """Mock get templates by type code"""
+    return {
+        "response": {
+            "templates": [
+                {
+                    "id": "1",
+                    "langCode": "eng",
+                    "templateTypeCode": template_type,
+                    "fileText": "Please arrive 15 minutes before your appointment.\nBring your original documents.\nWear appropriate attire."
+                }
+            ]
+        },
+        "errors": None
+    }
+
+print("✅ Mock MOSIP endpoints added for local testing")
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,0 +1,27 @@
+<!-- OCR Integration Component - Embedded Full-Featured Scanner -->
+<div class="ocr-embed-container">
+    <!-- Header with Instructions -->
+    <div class="ocr-embed-header">
+        <h3>📄 OCR Document Scanner</h3>
+        <p>Use the full-featured scanner below to extract data from your documents</p>
+        <div class="ocr-embed-tip">
+            💡 <strong>Tip:</strong> After extracting data, click "Send to MOSIP Form" in the scanner to auto-fill the
+            registration form
+        </div>
+    </div>
+
+    <!-- Embedded OCR Scanner -->
+    <div class="iframe-container">
+        <iframe #ocrFrame [src]="ocrPageUrl" frameborder="0" allowfullscreen (load)="onIframeLoad()">
+        </iframe>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar" *ngIf="lastExtractedData">
+        <span class="status-icon">✅</span>
+        <span class="status-text">Data received from OCR scanner</span>
+        <button class="btn-apply" (click)="applyExtractedData()">
+            Apply to Form
+        </button>
+    </div>
+</div>
