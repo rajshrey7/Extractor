@@ -1,8 +1,9 @@
 # API Documentation
-## OCR Text Extraction & Verification System
+## MOSIP Pre-Registration OCR System
 
-**Base URL:** `http://localhost:8001`  
-**API Version:** 1.0  
+**Base URL (Backend):** `http://localhost:8001`  
+**Base URL (Frontend):** `http://localhost:4200`  
+**API Version:** 2.0  
 **Protocol:** HTTP/HTTPS  
 **Content Type:** `application/json`, `multipart/form-data`
 
@@ -10,70 +11,33 @@
 
 ## Table of Contents
 
-1. [Authentication](#authentication)
-2. [Error Handling](#error-handling)
-3. [Rate Limiting](#rate-limiting)
-4. [Endpoints](#endpoints)
-   - [OCR Extraction](#ocr-extraction)
-   - [Data Verification](#data-verification)
-   - [MOSIP Integration](#mosip-integration)
-   - [Configuration](#configuration)
-5. [Response Codes](#response-codes)
-6. [Examples](#examples)
+1. [Overview](#overview)
+2. [OCR Extraction APIs](#ocr-extraction-apis)
+3. [MOSIP Pre-Registration APIs](#mosip-pre-registration-apis)
+4. [Data Verification APIs](#data-verification-apis)
+5. [Packet Management APIs](#packet-management-apis)
+6. [Configuration APIs](#configuration-apis)
+7. [Response Codes](#response-codes)
+8. [Examples](#examples)
 
 ---
 
-## Authentication
+## Overview
 
-**Current Version:** No authentication required (local deployment)
+This system provides two sets of APIs:
 
-**Future Versions:** Bearer token authentication planned
+| API Set | Purpose | Port |
+|---------|---------|------|
+| **OCR APIs** | Document processing, text extraction, quality analysis | 8001 |
+| **MOSIP Mock APIs** | Pre-registration workflow (login, applications, booking) | 8001 |
 
-```http
-Authorization: Bearer {token}
-```
-
----
-
-## Error Handling
-
-### Error Response Format
-
-```json
-{
-  "success": false,
-  "error": "Error message description",
-  "detail": "Detailed error information",
-  "status_code": 400
-}
-```
-
-### Common Error Codes
-
-| Code | Meaning | Description |
-|------|---------|-------------|
-| 400 | Bad Request | Invalid input parameters |
-| 404 | Not Found | Resource not found |
-| 422 | Unprocessable Entity | Validation error |
-| 500 | Internal Server Error | Server-side error |
+The Angular frontend (port 4200) consumes the MOSIP Mock APIs for the complete pre-registration experience.
 
 ---
 
-## Rate Limiting
+## OCR Extraction APIs
 
-**Current:** No rate limits (local deployment)
-
-**Recommended for Production:**
-- 100 requests/minute per IP
-- 1000 requests/hour per IP
-
----
-
-## Endpoints
-
-### OCR Extraction
-
-#### POST `/api/upload`
+### POST `/api/upload`
 
 Upload and process a document for OCR extraction.
 
@@ -92,16 +56,6 @@ Content-Type: multipart/form-data
 | `file` | File | Yes | Image or PDF file (JPG, PNG, PDF) |
 | `use_openai` | String | No | "true" to enable PaddleOCR |
 | `use_trocr` | String | No | "true" to enable TrOCR (handwritten) |
-| `stream` | String | No | "true" for streaming response |
-
-**Request Example:**
-
-```bash
-curl -X POST http://localhost:8001/api/upload \
-  -F "file=@passport.jpg" \
-  -F "use_openai=true" \
-  -F "use_trocr=false"
-```
 
 **Response (Success):**
 
@@ -114,79 +68,300 @@ curl -X POST http://localhost:8001/api/upload \
   "found_idcard": true,
   "extracted_fields": {
     "Name": "John Smith",
-    "Passport No": "AB1234567",
+    "Father Name": "Robert Smith",
     "Date of Birth": "01/01/1990",
-    "Nationality": "American",
-    "Expiry Date": "01/01/2030"
+    "Gender": "Male",
+    "Address": "123 Main St"
   },
   "trocr_confidence": {
     "Name": 0.976,
-    "Passport No": 0.942,
-    "Date of Birth": 0.883,
-    "Nationality": 0.891,
-    "Expiry Date": 0.867
+    "Father Name": 0.942,
+    "Date of Birth": 0.883
   },
-  "general_text": [
-    "PASSPORT",
-    "UNITED STATES OF AMERICA",
-    "Full extracted text..."
-  ],
   "quality": {
     "overall": 95.2,
     "blur": 158.32,
     "brightness": 125.45,
-    "contrast": 92.3,
-    "noise": 88.5,
-    "resolution": 98.7,
-    "warnings": [],
     "recommendation": "Excellent quality - proceed"
   }
 }
 ```
 
-**Response Codes:**
-- `200 OK` - Success
-- `400 Bad Request` - Invalid file format
-- `500 Internal Server Error` - Processing failed
+---
+
+## MOSIP Pre-Registration APIs
+
+### Authentication
+
+#### POST `/preregistration/v1/login/sendOtp`
+
+Send OTP for login.
+
+**Request:**
+```json
+{
+  "request": {
+    "userId": "test@example.com"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "response": {
+    "message": "OTP sent successfully",
+    "status": "true"
+  },
+  "errors": null
+}
+```
+
+#### POST `/preregistration/v1/login/validateOtp`
+
+Validate OTP (mock mode accepts any 6-digit OTP).
+
+**Request:**
+```json
+{
+  "request": {
+    "userId": "test@example.com",
+    "otp": "123456"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "response": {
+    "message": "OTP validated successfully",
+    "status": "true"
+  },
+  "errors": null
+}
+```
+
+#### POST `/preregistration/v1/login/invalidateToken`
+
+Logout and invalidate session.
+
+**Response:**
+```json
+{
+  "response": {
+    "message": "Token invalidated successfully"
+  },
+  "errors": null
+}
+```
 
 ---
 
-#### POST `/api/upload-stream`
+### Configuration
 
-Upload with real-time streaming feedback.
+#### GET `/preregistration/v1/config`
 
-**Request:**
+Get application configuration including languages, validation rules, and feature flags.
 
-```http
-POST /api/upload-stream HTTP/1.1
-Content-Type: multipart/form-data
+**Response:**
+```json
+{
+  "response": {
+    "mosip.supported-languages": "eng,ara,fra",
+    "mosip.primary-language": "eng",
+    "preregistration.identity.name": "fullName",
+    "preregistration.documentupload.allowed.file.type": "application/pdf,image/jpeg,image/png",
+    "preregistration.preview.fields": "fullName,fatherName,motherName,dateOfBirth,gender,phone,email"
+  },
+  "errors": null
+}
 ```
 
-**Parameters:** Same as `/api/upload`
+#### GET `/preregistration/v1/uispec/latest`
 
-**Response:** Server-Sent Events (SSE) stream
+Get UI specification for demographic form fields.
 
-```
-event: progress
-data: {"stage": "quality_check", "percent": 20}
-
-event: progress
-data: {"stage": "ocr_processing", "percent": 60}
-
-event: complete
-data: {"success": true, "extracted_fields": {...}}
+**Response:**
+```json
+{
+  "response": {
+    "jsonSpec": {
+      "identity": {
+        "identity": [
+          {
+            "id": "fullName",
+            "inputRequired": true,
+            "controlType": "textbox",
+            "type": "simpleType",
+            "required": true,
+            "labelName": {"eng": "Full Name", "ara": "الاسم الكامل"}
+          },
+          {
+            "id": "fatherName",
+            "inputRequired": true,
+            "controlType": "textbox",
+            "labelName": {"eng": "Father's Name", "ara": "اسم الأب"}
+          },
+          {
+            "id": "motherName",
+            "inputRequired": true,
+            "controlType": "textbox",
+            "labelName": {"eng": "Mother's Name", "ara": "اسم الأم"}
+          }
+        ],
+        "locationHierarchy": ["region", "province", "city"]
+      }
+    },
+    "idSchemaVersion": "0.1"
+  }
+}
 ```
 
 ---
 
-### Data Verification
+### Applications
 
-#### POST `/api/verify`
+#### GET `/preregistration/v1/applications/prereg`
 
-Verify extracted data against original source.
+List all pre-registration applications.
+
+**Response:**
+```json
+{
+  "response": {
+    "basicDetails": [
+      {
+        "preRegistrationId": "1234567890",
+        "statusCode": "Pending_Appointment",
+        "demographicMetadata": {
+          "fullName": [{"language": "eng", "value": "John Smith"}]
+        }
+      }
+    ],
+    "totalRecords": 1
+  }
+}
+```
+
+#### POST `/preregistration/v1/applications`
+
+Create a new application.
+
+**Response:**
+```json
+{
+  "response": {
+    "preRegistrationId": "ABCD12345678",
+    "createdDateTime": "2024-12-12T00:00:00.000Z",
+    "statusCode": "Pending_Appointment"
+  }
+}
+```
+
+#### GET `/preregistration/v1/applications/prereg/{prid}`
+
+Get application details.
+
+**Response:**
+```json
+{
+  "response": {
+    "preRegistrationId": "1234567890",
+    "demographicDetails": {
+      "identity": {
+        "fullName": [{"language": "eng", "value": "John Smith"}],
+        "fatherName": [{"language": "eng", "value": "Robert Smith"}],
+        "motherName": [{"language": "eng", "value": "Mary Smith"}],
+        "dateOfBirth": "1990/01/01",
+        "gender": [{"language": "eng", "value": "Male"}],
+        "phone": "0612345678",
+        "email": "john@example.com"
+      }
+    }
+  }
+}
+```
+
+#### PUT `/preregistration/v1/applications/prereg/{prid}`
+
+Update application demographic data.
 
 **Request:**
+```json
+{
+  "request": {
+    "demographicDetails": {
+      "identity": {
+        "fullName": [{"language": "eng", "value": "Updated Name"}]
+      }
+    }
+  }
+}
+```
 
+#### DELETE `/preregistration/v1/applications/prereg/{prid}`
+
+Delete an application.
+
+---
+
+### Booking
+
+#### GET `/preregistration/v1/appointment/availability/{regCenterId}`
+
+Get available appointment slots.
+
+**Response:**
+```json
+{
+  "response": {
+    "availabilityDto": [
+      {
+        "date": "2024-12-15",
+        "timeslots": [
+          {
+            "fromTime": "09:00",
+            "toTime": "09:30",
+            "availability": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### POST `/preregistration/v1/applications/appointment`
+
+Book an appointment.
+
+**Request:**
+```json
+{
+  "request": {
+    "preRegistrationId": "1234567890",
+    "registrationCenterId": "10001",
+    "appointment_date": "2024-12-15",
+    "time_slot_from": "09:00",
+    "time_slot_to": "09:30"
+  }
+}
+```
+
+#### PUT `/preregistration/v1/applications/appointment/{prid}`
+
+Cancel an appointment.
+
+---
+
+## Data Verification APIs
+
+### POST `/api/verify`
+
+Verify and validate extracted OCR data.
+
+**Request:**
 ```http
 POST /api/verify HTTP/1.1
 Content-Type: application/x-www-form-urlencoded
@@ -198,274 +373,72 @@ Content-Type: application/x-www-form-urlencoded
 |-----------|------|----------|-------------|
 | `extracted_data` | JSON String | Yes | OCR extracted fields |
 | `original_data` | JSON String | No | Reference/source data |
-| `ocr_text_block` | String | No | Raw OCR text for validation |
 
-**Request Example:**
-
-```bash
-curl -X POST http://localhost:8001/api/verify \
-  -d "extracted_data={\"Name\":\"John\",\"Email\":\"john@example.com\"}" \
-  -d "original_data={\"Name\":\"John\",\"Email\":\"john@example.com\"}"
-```
-
-**Response (Success):**
-
+**Response:**
 ```json
 {
   "success": true,
-  "overall_verification_status": "PASS WITH CORRECTIONS",
+  "overall_verification_status": "PASS",
   "cleaned_data": {
     "Name": "John Smith",
-    "Email": "john@example.com",
-    "Phone": "+1-555-1234"
+    "Email": "john@example.com"
   },
   "verification_report": [
     {
       "field": "Name",
-      "extracted": "John Smith",
-      "original": "John Smith",
       "status": "PASS",
       "confidence": 100,
-      "match_percentage": 100,
-      "issues": []
-    },
-    {
-      "field": "Email",
-      "extracted": "john@example.com",
-      "original": "john@example.com",
-      "status": "PASS",
-      "confidence": 95.5,
-      "match_percentage": 100,
-      "issues": []
+      "match_percentage": 100
     }
   ],
   "summary": {
     "total_fields": 5,
     "passed_fields": 5,
-    "failed_fields": 0,
-    "corrected_fields": 0,
     "overall_confidence": 97.8
   }
 }
 ```
 
-**Response Codes:**
-- `200 OK` - Verification complete
-- `400 Bad Request` - Invalid JSON data
-
 ---
 
-### MOSIP Integration
+## Packet Management APIs
 
-#### POST `/api/mosip/send`
+### POST `/api/mosip/send`
 
-Create MOSIP registration packet.
+Create MOSIP registration packet from OCR data.
 
 **Request:**
-
-```http
-POST /api/mosip/send HTTP/1.1
-Content-Type: application/json
-```
-
-**Body:**
-
 ```json
 {
   "extracted_fields": {
     "Name": "John Smith",
+    "Father Name": "Robert Smith",
     "Date of Birth": "01/01/1990"
   },
   "extracted_metadata": {
     "trocr_confidence": {
-      "Name": 0.95,
-      "Date of Birth": 0.88
-    },
-    "quality": {
-      "overall": 92.5
+      "Name": 0.95
     }
   }
 }
 ```
 
-**Response (Success):**
-
+**Response:**
 ```json
 {
   "success": true,
-  "packet_id": "PKT_20241130_001",
-  "message": "Packet created successfully",
-  "packet_location": "mock_packets/PKT_20241130_001.json"
+  "packet_id": "PKT_20241212_001",
+  "message": "Packet created successfully"
 }
 ```
 
----
+### GET `/api/mosip/packets`
 
-#### GET `/api/mosip/packets`
+List all created packets.
 
-List all created MOSIP packets.
+### GET `/api/mosip/packet/{packet_id}`
 
-**Request:**
-
-```bash
-curl http://localhost:8001/api/mosip/packets
-```
-
-**Response:**
-
-```json
-{
-  "success": true,
-  "packets": [
-    {
-      "packet_id": "PKT_20241130_001",
-      "created_at": "2024-11-30T10:30:00",
-      "status": "created",
-      "field_count": 8
-    },
-    {
-      "packet_id": "PKT_20241130_002",
-      "created_at": "2024-11-30T11:15:00",
-      "status": "uploaded",
-      "mosip_prid": "1234567890"
-    }
-  ]
-}
-```
-
----
-
-#### GET `/api/mosip/packet/{packet_id}`
-
-Retrieve specific packet details.
-
-**Request:**
-
-```bash
-curl http://localhost:8001/api/mosip/packet/PKT_20241130_001
-```
-
-**Response:**
-
-```json
-{
-  "packet_id": "PKT_20241130_001",
-  "data": {
-    "identity": {
-      "fullName": [{"language": "en", "value": "John Smith"}],
-      "dateOfBirth": "1990/01/01",
-      "gender": [{"language": "en", "value": "Male"}]
-    },
-    "metadata": {
-      "created_at": "2024-11-30T10:30:00",
-      "quality_score": 92.5,
-      "confidence_scores": {
-        "Name": 0.95
-      }
-    }
-  }
-}
-```
-
----
-
-#### POST `/api/mosip/upload/{packet_id}`
-
-Upload packet to MOSIP Pre-Registration server.
-
-**Request:**
-
-```bash
-curl -X POST http://localhost:8001/api/mosip/upload/PKT_20241130_001
-```
-
-**Response (Success):**
-
-```json
-{
-  "success": true,
-  "packet_id": "PKT_20241130_001",
-  "mosip_prid": "1234567890123456",
-  "message": "Packet uploaded successfully to MOSIP"
-}
-```
-
----
-
-### Configuration
-
-#### GET `/api/config`
-
-Get current application configuration.
-
-**Request:**
-
-```bash
-curl http://localhost:8001/api/config
-```
-
-**Response:**
-
-```json
-{
-  "language": "en",
-  "supported_languages": ["en", "ar", "hi"],
-  "translations": {
-    "app_title": "OCR Text Extraction & Verification",
-    "tab_extract": "Extract Text",
-    ...
-  }
-}
-```
-
----
-
-#### POST `/api/set-language`
-
-Change application language.
-
-**Request:**
-
-```bash
-curl -X POST http://localhost:8001/api/set-language \
-  -d "language=hi"
-```
-
-**Response:**
-
-```json
-{
-  "success": true,
-  "language": "hi",
-  "translations": {
-    "app_title": "OCR टेक्स्ट निष्कर्षण और सत्यापन",
-    ...
-  }
-}
-```
-
----
-
-#### GET `/api/health`
-
-Health check endpoint.
-
-**Request:**
-
-```bash
-curl http://localhost:8001/api/health
-```
-
-**Response:**
-
-```json
-{
-  "status": "healthy",
-  "model_loaded": true,
-  "ocr_loaded": true,
-  "mosip_available": true
-}
-```
+Get packet details.
 
 ---
 
@@ -476,127 +449,59 @@ curl http://localhost:8001/api/health
 | 200 | OK | Request successful |
 | 201 | Created | Resource created |
 | 400 | Bad Request | Invalid request parameters |
+| 401 | Unauthorized | Authentication required |
 | 404 | Not Found | Resource not found |
 | 422 | Unprocessable Entity | Validation failed |
 | 500 | Internal Server Error | Server error |
-| 503 | Service Unavailable | OCR engine not loaded |
 
 ---
 
 ## Examples
 
-### Example 1: Extract Text from Image (Python)
-
-```python
-import requests
-
-url = "http://localhost:8001/api/upload"
-files = {"file": open("passport.jpg", "rb")}
-data = {"use_openai": "true", "use_trocr": "false"}
-
-response = requests.post(url, files=files, data=data)
-result = response.json()
-
-if result["success"]:
-    print("Extracted Fields:")
-    for field, value in result["extracted_fields"].items():
-        confidence = result["trocr_confidence"].get(field, 0)
-        print(f"  {field}: {value} (Confidence: {confidence:.2%})")
-else:
-    print(f"Error: {result['error']}")
-```
-
-### Example 2: Verify Data (JavaScript)
-
-```javascript
-const formData = new FormData();
-formData.append('extracted_data', JSON.stringify({
-  Name: "John Smith",
-  Email: "john@example.com"
-}));
-
-fetch('http://localhost:8001/api/verify', {
-  method: 'POST',
-  body: formData
-})
-  .then(response => response.json())
-  .then(data => {
-    console.log('Verification Status:', data.overall_verification_status);
-    console.log('Confidence:', data.summary.overall_confidence);
-  });
-```
-
-### Example 3: Create MOSIP Packet (cURL)
+### Example 1: Complete Pre-Registration Flow (cURL)
 
 ```bash
-curl -X POST http://localhost:8001/api/mosip/send \
+# 1. Send OTP
+curl -X POST http://localhost:8001/preregistration/v1/login/sendOtp \
   -H "Content-Type: application/json" \
-  -d '{
-    "extracted_fields": {
-      "Name": "John Smith",
-      "Date of Birth": "01/01/1990",
-      "Nationality": "American"
-    },
-    "extracted_metadata": {
-      "trocr_confidence": {
-        "Name": 0.95,
-        "Date of Birth": 0.88,
-        "Nationality": 0.91
-      }
-    }
-  }' | jq '.'
+  -d '{"request": {"userId": "test@example.com"}}'
+
+# 2. Validate OTP
+curl -X POST http://localhost:8001/preregistration/v1/login/validateOtp \
+  -H "Content-Type: application/json" \
+  -d '{"request": {"userId": "test@example.com", "otp": "123456"}}'
+
+# 3. Create Application
+curl -X POST http://localhost:8001/preregistration/v1/applications \
+  -H "Content-Type: application/json"
+
+# 4. Update with Demographic Data
+curl -X PUT http://localhost:8001/preregistration/v1/applications/prereg/{prid} \
+  -H "Content-Type: application/json" \
+  -d '{"request": {"demographicDetails": {...}}}'
 ```
 
-### Example 4: Change Language (Python)
+### Example 2: OCR with Auto-Fill (Python)
 
 ```python
 import requests
 
+# Extract from document
+files = {"file": open("birth_certificate.jpg", "rb")}
 response = requests.post(
-    "http://localhost:8001/api/set-language",
-    data={"language": "ar"}
+    "http://localhost:8001/api/upload",
+    files=files,
+    data={"use_openai": "true", "use_trocr": "true"}
 )
+ocr_data = response.json()
 
-result = response.json()
-print(f"Language changed to: {result['language']}")
-print(f"App Title: {result['translations']['app_title']}")
+# Extracted fields are automatically available in Angular form
+# via OcrDataService when using the integrated workflow
+print("Extracted:", ocr_data["extracted_fields"])
 ```
 
 ---
 
-## API Versioning
-
-**Current Version:** v1.0
-
-**Future Versioning Strategy:**
-- URL-based: `/api/v2/upload`
-- Header-based: `Accept: application/vnd.ocr.v2+json`
-
----
-
-## Webhooks (Planned)
-
-Future versions will support webhooks for async processing:
-
-```json
-{
-  "webhook_url": "https://your-server.com/webhook",
-  "events": ["ocr_complete", "verification_complete"]
-}
-```
-
----
-
-## SDK Support (Planned)
-
-Official SDKs planned for:
-- Python
-- JavaScript/TypeScript
-- Java
-- C#
-
----
-
-**API Version:** 1.0  
-**Last Updated:** November 30, 2024  
+**API Version:** 2.0  
+**Last Updated:** December 12, 2024  
 **Maintained By:** Development Team

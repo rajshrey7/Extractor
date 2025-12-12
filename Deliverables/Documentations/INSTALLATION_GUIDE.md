@@ -1,24 +1,24 @@
 # Installation & Integration Guide
-## OCR Text Extraction & Verification System
+## MOSIP Pre-Registration OCR System
 
-**Version:** 1.0.0  
-**Last Updated:** November 30, 2024
+**Version:** 2.0.0  
+**Last Updated:** December 12, 2024
 
 ---
 
 ## Table of Contents
 
 1. [System Requirements](#system-requirements)
-2. [Installation](#installation)
+2. [Quick Start](#quick-start)
+3. [Detailed Installation](#detailed-installation)
    - [Windows](#windows-installation)
    - [Linux/Ubuntu](#linux-installation)
    - [macOS](#macos-installation)
-   - [Docker](#docker-deployment)
-3. [Configuration](#configuration)
-4. [MOSIP Integration](#mosip-integration)
-5. [Production Deployment](#production-deployment)
-6. [Troubleshooting](#troubleshooting)
-7. [Upgrade Guide](#upgrade-guide)
+4. [Running the Application](#running-the-application)
+5. [Configuration](#configuration)
+6. [OCR to Form Integration](#ocr-to-form-integration)
+7. [Production Deployment](#production-deployment)
+8. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -29,83 +29,140 @@
 | Component | Specification |
 |-----------|--------------|
 | **OS** | Windows 10+, Ubuntu 20.04+, macOS 11+ |
-| **Python** | 3.10 - 3.14 |
+| **Python** | 3.10 or higher |
+| **Node.js** | 14.x or higher |
 | **RAM** | 4GB (8GB recommended for TrOCR) |
-| **Disk Space** | 5GB (includes models) |
-| **CPU** | Dual-core 2.0GHz+ |
-| **GPU** | Optional (CUDA for TrOCR acceleration) |
+| **Disk Space** | 5GB (includes OCR models) |
 
-### Recommended Requirements
+### Verify Prerequisites
 
-| Component | Specification |
-|-----------|--------------|
-| **RAM** | 16GB |
-| **Disk Space** | 10GB SSD |
-| **CPU** | Quad-core 3.0GHz+ |
-| **GPU** | NVIDIA with CUDA 11.8+ |
+```bash
+# Check Python version
+python --version
+# Should output: Python 3.10.x or higher
 
-### Software Dependencies
+# Check Node.js version
+node --version
+# Should output: v14.x.x or higher
 
-- Python 3.10+
-- pip (Python package manager)
-- Git (for cloning repository)
-- Web browser (Chrome, Firefox, Edge, Safari)
+# Check npm version
+npm --version
+```
 
 ---
 
-## Installation
+## Quick Start
+
+### 5-Minute Setup
+
+```bash
+# 1. Clone repository
+git clone <repository-url>
+cd extractor
+
+# 2. Create and activate Python virtual environment
+python -m venv venv
+
+# Windows:
+.\venv\Scripts\Activate.ps1
+
+# Linux/macOS:
+source venv/bin/activate
+
+# 3. Install Python dependencies
+pip install -r requirements.txt
+
+# 4. Install Angular dependencies
+cd mosip-prereg
+npm install
+cd ..
+
+# 5. Start Backend (Terminal 1)
+python run_server.py
+
+# 6. Start Frontend (Terminal 2)
+cd mosip-prereg
+npm start
+```
+
+### Access the Application
+
+| Application | URL |
+|------------|-----|
+| **MOSIP Pre-Registration** | http://localhost:4200 |
+| **OCR Extraction Tool** | http://localhost:8001 |
+| **API Documentation** | http://localhost:8001/docs |
+
+---
+
+## Detailed Installation
 
 ### Windows Installation
 
-#### Step 1: Install Python
+#### Step 1: Install Python 3.10+
 
-1. Download Python 3.10+ from [python.org](https://www.python.org/downloads/)
-2. Run installer and **check "Add Python to PATH"**
-3. Verify installation:
+1. Download from [python.org](https://www.python.org/downloads/)
+2. Run installer
+3. **✅ Check "Add Python to PATH"**
+4. Click "Install Now"
 
-```cmd
-python --version
-pip --version
+#### Step 2: Install Node.js 14+
+
+1. Download from [nodejs.org](https://nodejs.org/)
+2. Run installer with default options
+3. Restart terminal after installation
+
+#### Step 3: Clone Repository
+
+```powershell
+git clone <repository-url>
+cd extractor
 ```
 
-#### Step 2: Clone Repository
+#### Step 4: Create Virtual Environment
 
-```cmd
-git clone https://github.com/your-org/ocr-extractor.git
-cd ocr-extractor
-```
-
-#### Step 3: Create Virtual Environment
-
-```cmd
+```powershell
+# Create virtual environment
 python -m venv venv
-venv\Scripts\activate
+
+# Activate (PowerShell)
+.\venv\Scripts\Activate.ps1
+
+# If you get execution policy error:
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+.\venv\Scripts\Activate.ps1
 ```
 
-**Verification:** Command prompt should show `(venv)` prefix
+**Verification:** Your prompt should show `(venv)` prefix.
 
-#### Step 4: Install Dependencies
+#### Step 5: Install Python Dependencies
 
-```cmd
+```powershell
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-**Note:** First install downloads ~2GB of models (PaddleOCR, TrOCR)
+**Note:** First installation downloads ~2GB of OCR models. This may take 10-15 minutes.
 
-#### Step 5: Verify Installation
+#### Step 6: Install Angular Dependencies
 
-```cmd
-python -c "import paddle; import transformers; print('✓ Dependencies OK')"
+```powershell
+cd mosip-prereg
+npm install
+cd ..
 ```
 
-#### Step 6: Start Server
+#### Step 7: Verify Installation
 
-```cmd
-python run_server.py
+```powershell
+# Test Python imports
+python -c "import paddle; import transformers; print('✅ Python dependencies OK')"
+
+# Test Node modules
+cd mosip-prereg
+npm list @angular/core
+cd ..
 ```
-
-**Success:** Server running at http://localhost:8001
 
 ---
 
@@ -114,8 +171,7 @@ python run_server.py
 #### Step 1: Update System
 
 ```bash
-sudo apt update
-sudo apt upgrade -y
+sudo apt update && sudo apt upgrade -y
 ```
 
 #### Step 2: Install Python 3.10+
@@ -125,306 +181,216 @@ sudo apt install python3.10 python3.10-venv python3-pip -y
 python3.10 --version
 ```
 
-#### Step 3: Clone Repository
+#### Step 3: Install Node.js 14+
 
 ```bash
-git clone https://github.com/your-org/ocr-extractor.git
-cd ocr-extractor
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install nodejs -y
+node --version
+npm --version
 ```
 
-#### Step 4: Create Virtual Environment
+#### Step 4: Clone and Setup
 
 ```bash
+git clone <repository-url>
+cd extractor
+
+# Create virtual environment
 python3.10 -m venv venv
 source venv/bin/activate
-```
 
-#### Step 5: Install Dependencies
-
-```bash
+# Install dependencies
 pip install --upgrade pip
 pip install -r requirements.txt
-```
 
-**For GPU support (optional):**
-
-```bash
-pip install torch==2.6.0+cu118 --index-url https://download.pytorch.org/whl/cu118
-```
-
-#### Step 6: Start Server
-
-```bash
-python run_server.py
-```
-
-**Run as Background Service:**
-
-```bash
-nohup python run_server.py > server.log 2>&1 &
+# Install Angular
+cd mosip-prereg
+npm install
+cd ..
 ```
 
 ---
 
 ### macOS Installation
 
-#### Step 1: Install Homebrew (if not installed)
+#### Step 1: Install Homebrew
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-#### Step 2: Install Python 3.10+
+#### Step 2: Install Python and Node.js
 
 ```bash
-brew install python@3.10
+brew install python@3.10 node
 python3.10 --version
+node --version
 ```
 
-#### Step 3: Clone Repository
+#### Step 3: Clone and Setup
 
 ```bash
-git clone https://github.com/your-org/ocr-extractor.git
-cd ocr-extractor
-```
+git clone <repository-url>
+cd extractor
 
-#### Step 4: Create Virtual Environment
-
-```bash
+# Create virtual environment
 python3.10 -m venv venv
 source venv/bin/activate
-```
 
-#### Step 5: Install Dependencies
-
-```bash
+# Install dependencies
 pip install --upgrade pip
 pip install -r requirements.txt
-```
 
-#### Step 6: Start Server
-
-```bash
-python run_server.py
+# Install Angular
+cd mosip-prereg
+npm install
+cd ..
 ```
 
 ---
 
-### Docker Deployment
+## Running the Application
 
-#### Option 1: Using Docker Compose (Recommended)
+### Start Both Servers
 
-**Create `docker-compose.yml`:**
+You need **two terminal windows** running simultaneously.
 
-```yaml
-version: '3.8'
-
-services:
-  ocr-extractor:
-    build: .
-    ports:
-      - "8001:8001"
-    volumes:
-      - ./uploads:/app/uploads
-      - ./mock_packets:/app/mock_packets
-    environment:
-      - SELECTED_LANGUAGE=en
-      - MOSIP_ENABLED=false
-    restart: unless-stopped
-```
-
-**Create `Dockerfile`:**
-
-```dockerfile
-FROM python:3.10-slim
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application
-COPY . .
-
-# Create directories
-RUN mkdir -p uploads mock_packets
-
-# Expose port
-EXPOSE 8001
-
-# Run server
-CMD ["python", "run_server.py"]
-```
-
-**Deploy:**
+#### Terminal 1: Python Backend (Port 8001)
 
 ```bash
-docker-compose up -d
+# Navigate to project root
+cd extractor
+
+# Activate virtual environment
+# Windows:
+.\venv\Scripts\Activate.ps1
+# Linux/macOS:
+source venv/bin/activate
+
+# Start server
+python run_server.py
 ```
 
-**Access:** http://localhost:8001
+**Expected Output:**
+```
+====================
+Starting OCR Server...
+====================
+✅ PaddleOCR initialized successfully
+✅ Startup complete!
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+```
 
-#### Option 2: Docker Run
+#### Terminal 2: Angular Frontend (Port 4200)
 
 ```bash
-docker build -t ocr-extractor .
-docker run -d -p 8001:8001 \
-  -v $(pwd)/uploads:/app/uploads \
-  -v $(pwd)/mock_packets:/app/mock_packets \
-  --name ocr-server \
-  ocr-extractor
+# Navigate to Angular project
+cd extractor/mosip-prereg
+
+# Start development server
+npm start
 ```
+
+**Expected Output:**
+```
+** Angular Live Development Server is listening on localhost:4200 **
+: Compiled successfully.
+```
+
+### Verify Both Servers
+
+1. Open http://localhost:4200 → MOSIP Login page
+2. Open http://localhost:8001 → OCR Extraction tool
+3. Open http://localhost:8001/docs → API documentation
 
 ---
 
 ## Configuration
 
-### 1. Basic Configuration
-
-Edit `config.py`:
+### Backend Configuration (`config.py`)
 
 ```python
-# Default Language (en, ar, hi)
-SELECTED_LANGUAGE = "en"
+# Language Settings
+SELECTED_LANGUAGE = "en"  # en, ar, hi
 
-# Server Configuration
-HOST = "0.0.0.0"  # Listen on all interfaces
-PORT = 8001       # Default port
-
-# File Upload Settings
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'pdf'}
-```
-
-### 2. MOSIP Configuration
-
-```python
 # MOSIP Integration
-MOSIP_ENABLED = True  # Enable MOSIP features
-MOSIP_API_URL = "https://mosip-server.example.com"
-MOSIP_API_KEY = "your-api-key-here"
-MOSIP_API_VERSION = "v1"
-
-# Packet Storage
-PACKETS_DIR = "mock_packets"
+MOSIP_ENABLED = False     # True to connect to real MOSIP server
+MOSIP_BASE_URL = "https://collab.mosip.net"
+MOSIP_CLIENT_ID = "mosip-prereg-client"
+MOSIP_CLIENT_SECRET = "your-secret"
 ```
 
-### 3. OCR Engine Configuration
+### Frontend Configuration
 
-```python
-# PaddleOCR Settings
-PADDLE_LANG = "en"
-PADDLE_USE_GPU = False  # Set True if GPU available
+#### API URL (`mosip-prereg/src/assets/configs/default.properties`)
 
-# TrOCR Settings
-TROCR_MODEL = "microsoft/trocr-large-handwritten"
-TROCR_DEVICE = "cpu"  # or "cuda" for GPU
+```properties
+mosip.preregistration.api.url=http://localhost:8001
 ```
 
-### 4. Quality Thresholds
+#### Supported Languages
 
-```python
-# Image Quality Thresholds
-BLUR_THRESHOLD = 100.0      # Laplacian variance
-BRIGHTNESS_MIN = 50         # Minimum brightness
-BRIGHTNESS_MAX = 200        # Maximum brightness
-OVERALL_QUALITY_MIN = 70    # Minimum overall score
-```
+The system supports:
+- **English (eng)** — Default
+- **Arabic (ara)** — RTL support
+- **French (fra)**
 
 ---
 
-## MOSIP Integration
+## OCR to Form Integration
 
-### Prerequisites
+### How It Works
 
-1. Access to MOSIP Pre-Registration server
-2. Valid API credentials
-3. Network connectivity to MOSIP endpoint
+1. **User opens OCR tool** (http://localhost:8001)
+2. **Uploads document** and processes with OCR
+3. **Extracted data sent via `postMessage`** to Angular app
+4. **OcrDataService receives** and stores data
+5. **DemographicComponent auto-fills** form fields
 
-### Step 1: Configure MOSIP Connection
+### Field Mapping
 
-Edit `config.py`:
+| OCR Extracted Field | MOSIP Form Field |
+|---------------------|------------------|
+| Name, Full Name | fullName |
+| Father Name, Father's Name | fatherName |
+| Mother Name, Mother's Name | motherName |
+| Date of Birth, DOB | dateOfBirth |
+| Gender, Sex | gender |
+| Phone, Mobile | phone |
+| Email | email |
+| Address | addressLine1 |
+| City | city |
+| Pin Code, Postal Code | postalCode |
 
-```python
-MOSIP_ENABLED = True
-MOSIP_API_URL = "https://your-mosip-server.com/preregistration/v1"
-MOSIP_API_KEY = "your-api-key"
-```
+### Testing the Integration
 
-### Step 2: Test Connection
-
-```python
-from mosip_client import MosipClient
-
-client = MosipClient()
-status = client.test_connection()
-print(f"MOSIP Connection: {status}")
-```
-
-### Step 3: Field Mapping Configuration
-
-Edit `mosip_field_mapper.py` to customize field mappings:
-
-```python
-FIELD_MAPPING = {
-    # OCR Field → MOSIP Schema Field
-    "Name": "fullName",
-    "Date of Birth": "dateOfBirth",
-    "Gender": "gender",
-    "Address": "addressLine1",
-    ...
-}
-```
-
-### Step 4: Create Test Packet
-
-```bash
-curl -X POST http://localhost:8001/api/mosip/send \
-  -H "Content-Type: application/json" \
-  -d @test_data.json
-```
-
-### Step 5: Upload to MOSIP
-
-```bash
-curl -X POST http://localhost:8001/api/mosip/upload/{packet_id}
-```
-
-**Expected Response:**
-
-```json
-{
-  "success": true,
-  "mosip_prid": "1234567890123456"
-}
-```
+1. Open http://localhost:4200
+2. Login with any email and OTP (e.g., `123456`)
+3. Create new application
+4. Click "Scan Document" in demographic form
+5. Upload a document with name, DOB, etc.
+6. Fields should auto-fill in the form
 
 ---
 
 ## Production Deployment
 
-### 1. Using Systemd (Linux)
+### Using systemd (Linux)
 
-**Create service file:** `/etc/systemd/system/ocr-extractor.service`
+Create `/etc/systemd/system/ocr-backend.service`:
 
 ```ini
 [Unit]
-Description=OCR Extraction Service
+Description=OCR Backend Service
 After=network.target
 
 [Service]
 Type=simple
 User=www-data
-WorkingDirectory=/opt/ocr-extractor
-Environment="PATH=/opt/ocr-extractor/venv/bin"
-ExecStart=/opt/ocr-extractor/venv/bin/python run_server.py
+WorkingDirectory=/opt/extractor
+Environment="PATH=/opt/extractor/venv/bin"
+ExecStart=/opt/extractor/venv/bin/python run_server.py
 Restart=always
 RestartSec=10
 
@@ -432,78 +398,46 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-**Enable and start:**
-
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable ocr-extractor
-sudo systemctl start ocr-extractor
-sudo systemctl status ocr-extractor
+sudo systemctl enable ocr-backend
+sudo systemctl start ocr-backend
 ```
 
-### 2. Using Nginx Reverse Proxy
-
-**Install Nginx:**
+### Angular Production Build
 
 ```bash
-sudo apt install nginx -y
+cd mosip-prereg
+npm run build --prod
 ```
 
-**Configure:** `/etc/nginx/sites-available/ocr-extractor`
+Deploy `dist/` folder to web server (Nginx, Apache).
+
+### Nginx Configuration
 
 ```nginx
 server {
     listen 80;
-    server_name ocr.example.com;
+    server_name prereg.example.com;
 
+    # Angular frontend
     location / {
+        root /var/www/mosip-prereg;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # API proxy
+    location /preregistration/ {
         proxy_pass http://localhost:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        
-        # Increase timeout for large file uploads
-        proxy_read_timeout 300;
-        proxy_connect_timeout 300;
-        proxy_send_timeout 300;
-        
-        # Increase max body size
-        client_max_body_size 20M;
+    }
+
+    location /api/ {
+        proxy_pass http://localhost:8001;
+        proxy_set_header Host $host;
     }
 }
-```
-
-**Enable site:**
-
-```bash
-sudo ln -s /etc/nginx/sites-available/ocr-extractor /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl restart nginx
-```
-
-### 3. SSL/HTTPS Setup (Let's Encrypt)
-
-```bash
-sudo apt install certbot python3-certbot-nginx -y
-sudo certbot --nginx -d ocr.example.com
-```
-
-### 4. Performance Tuning
-
-**Increase worker processes in `run_server.py`:**
-
-```python
-if __name__ == "__main__":
-    import multiprocessing
-    
-    workers = multiprocessing.cpu_count()
-    uvicorn.run(
-        "app:app",
-        host="0.0.0.0",
-        port=8001,
-        workers=workers,
-        log_level="info"
-    )
 ```
 
 ---
@@ -512,212 +446,132 @@ if __name__ == "__main__":
 
 ### Installation Issues
 
-#### Issue: `ModuleNotFoundError`
+#### Python: ModuleNotFoundError
 
-**Solution:**
 ```bash
+# Ensure virtual environment is activated
+# Then reinstall:
 pip install --upgrade -r requirements.txt
 ```
 
-#### Issue: `torch` installation fails
+#### Node: npm install fails
 
-**Solution:**
 ```bash
-# CPU version
-pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
-
-# GPU version (CUDA 11.8)
-pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu118
+cd mosip-prereg
+rm -rf node_modules package-lock.json
+npm cache clean --force
+npm install
 ```
 
-#### Issue: `venv` not activating
+#### Windows: venv won't activate
 
-**Windows:**
-```cmd
+```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-venv\Scripts\activate
-```
-
-**Linux/Mac:**
-```bash
-chmod +x venv/bin/activate
-source venv/bin/activate
+.\venv\Scripts\Activate.ps1
 ```
 
 ### Runtime Issues
 
-#### Issue: Server won't start (port in use)
+#### Port 8001 in use
 
-**Check port:**
 ```bash
 # Windows
 netstat -ano | findstr :8001
-
-# Linux/Mac
-lsof -ti:8001
-```
-
-**Kill process:**
-```bash
-# Windows
 taskkill /PID <PID> /F
 
-# Linux/Mac
-kill -9 <PID>
+# Linux/macOS
+lsof -ti:8001 | xargs kill -9
 ```
 
-#### Issue: Out of memory
-
-**Solution:** Reduce model size or increase RAM
-
-```python
-# In config.py
-TROCR_MODEL = "microsoft/trocr-base-handwritten"  # Smaller model
-```
-
-#### Issue: MOSIP connection fails
-
-**Debug:**
-```bash
-curl -X GET https://your-mosip-server.com/health
-```
-
-**Check firewall:**
-```bash
-sudo ufw allow 8001
-```
-
----
-
-## Upgrade Guide
-
-### From v0.x to v1.0
-
-#### Step 1: Backup Data
+#### Port 4200 in use
 
 ```bash
-cp -r mock_packets mock_packets.backup
-cp -r uploads uploads.backup
+# Windows
+netstat -ano | findstr :4200
+taskkill /PID <PID> /F
+
+# Linux/macOS
+lsof -ti:4200 | xargs kill -9
 ```
 
-#### Step 2: Pull Latest Code
+#### Angular compilation errors
 
 ```bash
-git pull origin main
+cd mosip-prereg
+npm start -- --source-map=false
 ```
 
-#### Step 3: Update Dependencies
+#### OCR models downloading slowly
 
-```bash
-pip install --upgrade -r requirements.txt
-```
+First startup downloads ~1GB of models. On slow connections:
+- Wait patiently (can take 10-20 minutes)
+- Models are cached after first download
 
-#### Step 4: Migrate Configuration
+### MOSIP UI Issues
 
-**Old `config.py` → New `config.py`**
+| Problem | Solution |
+|---------|----------|
+| Login fails | Restart Python backend |
+| Form fields missing | Clear browser cache (Ctrl+Shift+R) |
+| Preview not showing fields | Check console for errors |
+| Appointment booking fails | Ensure backend is running |
 
-```python
-# Update language codes
-SELECTED_LANGUAGE = "en"  # was "english"
+### OCR Issues
 
-# Add new fields
-MOSIP_ENABLED = False
-```
-
-#### Step 5: Restart Server
-
-```bash
-sudo systemctl restart ocr-extractor
-```
+| Problem | Solution |
+|---------|----------|
+| Poor accuracy | Check image quality (>85% recommended) |
+| Handwritten text missing | Enable TrOCR checkbox |
+| Processing timeout | Reduce image size or PDF pages |
 
 ---
 
 ## Health Checks
 
-### Manual Check
+### Backend Health
 
 ```bash
-curl http://localhost:8001/api/health
+curl http://localhost:8001/
+# Should return HTML of OCR tool
 ```
 
-**Expected:**
-```json
-{
-  "status": "healthy",
-  "model_loaded": true,
-  "ocr_loaded": true
-}
-```
-
-### Automated Monitoring
-
-**Create `monitor.sh`:**
+### Frontend Health
 
 ```bash
-#!/bin/bash
-ENDPOINT="http://localhost:8001/api/health"
-RESPONSE=$(curl -s $ENDPOINT)
-
-if echo $RESPONSE | grep -q "healthy"; then
-    echo "✓ Service healthy"
-    exit 0
-else
-    echo "✗ Service unhealthy"
-    systemctl restart ocr-extractor
-    exit 1
-fi
+curl http://localhost:4200/
+# Should return Angular app HTML
 ```
 
-**Add to cron:**
+### API Health
+
 ```bash
-*/5 * * * * /opt/ocr-extractor/monitor.sh
+curl http://localhost:8001/preregistration/v1/config
+# Should return JSON configuration
 ```
 
 ---
 
-## Security Hardening
-
-### 1. Firewall Configuration
+## Quick Reference Commands
 
 ```bash
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw allow 22/tcp    # SSH
-sudo ufw allow 80/tcp    # HTTP
-sudo ufw allow 443/tcp   # HTTPS
-sudo ufw enable
-```
+# Activate virtual environment
+.\venv\Scripts\Activate.ps1  # Windows
+source venv/bin/activate     # Linux/macOS
 
-### 2. File Permissions
+# Start backend
+python run_server.py
 
-```bash
-chmod 750 /opt/ocr-extractor
-chmod 640 /opt/ocr-extractor/config.py
-chown -R www-data:www-data /opt/ocr-extractor
-```
+# Start frontend
+cd mosip-prereg && npm start
 
-### 3. Environment Variables
+# Stop all Python processes (Windows)
+Get-Process -Name python | Stop-Process -Force
 
-**Use `.env` file instead of hardcoding secrets:**
-
-```bash
-# .env
-MOSIP_API_KEY=your-secret-key
-MOSIP_API_URL=https://mosip-server.com
-```
-
-**Load in `config.py`:**
-
-```python
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-MOSIP_API_KEY = os.getenv("MOSIP_API_KEY")
+# Stop all Node processes (Windows)
+Get-Process -Name node | Stop-Process -Force
 ```
 
 ---
 
-**Document Version:** 1.0  
-**Support:** support@your-org.com  
-**Last Reviewed:** November 30, 2024
+**Document Version:** 2.0  
+**Last Updated:** December 12, 2024

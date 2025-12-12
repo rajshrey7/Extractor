@@ -1,23 +1,22 @@
 # Architectural Design Document
-## OCR Text Extraction & Verification System
+## MOSIP Pre-Registration OCR System
 
-**Version:** 1.0.0  
-**Date:** November 30, 2025  
+**Version:** 2.0.0  
+**Date:** December 12, 2024  
 **Status:** Production Ready
 
 ---
 
 ## Table of Contents
 
-1. [Executive Summary](#executive-summary)
-2. [System Architecture](#system-architecture)
-3. [Component Design](#component-design)
-4. [Data Flow Architecture](#data-flow-architecture)
-5. [Technology Stack](#technology-stack)
-6. [Design Patterns](#design-patterns)
-7. [Security Architecture](#security-architecture)
-8. [Scalability & Performance](#scalability--performance)
-9. [Integration Architecture](#integration-architecture)
+1. [Executive Summary](#1-executive-summary)
+2. [System Architecture](#2-system-architecture)
+3. [Component Design](#3-component-design)
+4. [Data Flow Architecture](#4-data-flow-architecture)
+5. [Technology Stack](#5-technology-stack)
+6. [Design Patterns](#6-design-patterns)
+7. [Security Architecture](#7-security-architecture)
+8. [Integration Architecture](#8-integration-architecture)
 
 ---
 
@@ -25,23 +24,26 @@
 
 ### 1.1 System Overview
 
-The OCR Text Extraction & Verification System is an enterprise-grade, multilingual document processing platform that provides intelligent optical character recognition, real-time confidence scoring, and seamless MOSIP identity platform integration.
+The MOSIP Pre-Registration OCR System is an enterprise-grade solution that combines:
+- **OCR Document Processing** — Multi-engine text extraction (PaddleOCR, TrOCR)
+- **MOSIP Pre-Registration UI** — Complete Angular-based identity registration portal
+- **Mock Backend Services** — FastAPI backend simulating all MOSIP APIs
 
 **Key Capabilities:**
-- Multi-Engine OCR (PaddleOCR, TrOCR, EasyOCR)
-- Real-time confidence scoring with visual feedback
-- Support for 3 languages (English, Arabic, Hindi)
-- MOSIP Pre-Registration integration
+- Multi-engine OCR with confidence scoring
+- Complete MOSIP Pre-Registration workflow
+- Support for 3 languages (English, Arabic, French)
+- OCR-to-form auto-fill integration
 - Quality-based document assessment
-- RESTful API architecture
+- Appointment booking and management
 
 ### 1.2 Design Principles
 
-1. **Modularity** - Loosely coupled components with clear interfaces
-2. **Extensibility** - Plugin architecture for OCR engines and languages
-3. **Performance** - Asynchronous processing and caching strategies
-4. **Reliability** - Error handling, fallback mechanisms, validation
-5. **Maintainability** - Clean code, comprehensive logging, documentation
+1. **Modularity** — Loosely coupled Angular components and Python modules
+2. **Extensibility** — Plugin architecture for OCR engines and languages
+3. **Mock-First Development** — Complete backend simulation for offline development
+4. **Performance** — Asynchronous processing and lazy model loading
+5. **Maintainability** — Clean code, comprehensive logging, documentation
 
 ---
 
@@ -49,217 +51,174 @@ The OCR Text Extraction & Verification System is an enterprise-grade, multilingu
 
 ### 2.1 High-Level Architecture
 
-```mermaid
-graph TB
-    subgraph CLIENT["🌐 CLIENT LAYER"]
-        WEB["Web Browser"]
-        API["API Clients"]
-    end
-    
-    subgraph APP["⚙️ APPLICATION LAYER"]
-        FAST["FastAPI Server<br/>(Port 8001)"]
-        ROUTE["API Router"]
-        CORS["CORS Middleware"]
-    end
-    
-    subgraph LOGIC["💼 BUSINESS LOGIC"]
-        OCR["OCR Processing"]
-        VER["Data Verification"]
-        QUAL["Quality Check"]
-        LANG["Language Support"]
-        MOS["MOSIP Integration"]
-    end
-    
-    subgraph ENGINE["🔧 OCR ENGINES"]
-        PAD["PaddleOCR<br/>(Printed Text)"]
-        TRO["TrOCR<br/>(Handwritten)"]
-    end
-    
-    subgraph DATA["💾 DATA STORAGE"]
-        PKT["MOSIP Packets"]
-        UP["Uploaded Files"]
-    end
-    
-    subgraph EXT["☁️ EXTERNAL"]
-        MOSIP_API["MOSIP<br/>Pre-Registration"]
-    end
-    
-    WEB --> FAST
-    API --> FAST
-    FAST --> ROUTE
-    ROUTE --> CORS
-    
-    CORS --> OCR
-    CORS --> VER
-    CORS --> QUAL
-    CORS --> MOS
-    
-    OCR --> PAD
-    OCR --> TRO
-    OCR --> LANG
-    VER --> LANG
-    
-    OCR --> UP
-    MOS --> PKT
-    MOS --> MOSIP_API
-    
-    style CLIENT fill:#2196F3,color:#fff
-    style APP fill:#4CAF50,color:#fff
-    style LOGIC fill:#FF9800,color:#fff
-    style ENGINE fill:#9C27B0,color:#fff
-    style DATA fill:#795548,color:#fff
-    style EXT fill:#607D8B,color:#fff
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                           USER INTERFACE LAYER                          │
+├─────────────────────────────────┬──────────────────────────────────────┤
+│     OCR Extraction UI           │    MOSIP Pre-Registration UI          │
+│     (index.html)                │    (Angular 8)                        │
+│     Port: 8001                  │    Port: 4200                         │
+│                                 │                                       │
+│  ┌──────────────────────────┐   │   ┌─────────────────────────────┐    │
+│  │ • Document Upload        │   │   │ • Login/OTP Authentication  │    │
+│  │ • OCR Processing         │   │   │ • Demographic Form          │    │
+│  │ • Quality Analysis       │   │   │ • Document Upload           │    │
+│  │ • Field Correction       │   │   │ • Appointment Booking       │    │
+│  │ • MOSIP Packet Creation  │   │   │ • Application Management    │    │
+│  └──────────────────────────┘   │   └─────────────────────────────┘    │
+├─────────────────────────────────┴──────────────────────────────────────┤
+│                           BACKEND SERVICES LAYER                        │
+│                            FastAPI (Port 8001)                          │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────┐ │
+│  │  OCR Services   │  │  MOSIP Mock     │  │  Data Processing        │ │
+│  │                 │  │  APIs           │  │                         │ │
+│  │  • PaddleOCR    │  │                 │  │  • Verification         │ │
+│  │  • TrOCR        │  │  • Auth/Login   │  │  • Data Cleaning        │ │
+│  │  • Parser       │  │  • Applications │  │  • Field Mapping        │ │
+│  │  • Quality      │  │  • Booking      │  │  • Confidence Score     │ │
+│  │                 │  │  • Documents    │  │                         │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────────────────┘ │
+│                                                                         │
+├────────────────────────────────────────────────────────────────────────┤
+│                           DATA STORAGE LAYER                            │
+├─────────────────┬──────────────────┬───────────────────────────────────┤
+│  uploads/       │  mock_packets/   │  In-Memory Store                  │
+│  (Images/PDFs)  │  (MOSIP Packets) │  (Applications, Sessions)         │
+└─────────────────┴──────────────────┴───────────────────────────────────┘
 ```
 
-### 2.2 Layered Architecture
+### 2.2 Component Interaction
 
-| Layer | Responsibility | Key Components |
-|-------|---------------|----------------|
-| **Presentation** | User interface, API endpoints | `index.html`, FastAPI routes |
-| **Application** | Request handling, routing | FastAPI app, middleware |
-| **Business Logic** | Core functionality | OCR processing, verification |
-| **Integration** | External services | MOSIP client, packet handler |
-| **Data Access** | File I/O, persistence | Upload handling, packet storage |
+```
+┌──────────────┐       ┌──────────────┐       ┌──────────────┐
+│   Browser    │──────▶│   Angular    │──────▶│   FastAPI    │
+│   (User)     │◀──────│   (4200)     │◀──────│   (8001)     │
+└──────────────┘       └──────────────┘       └──────────────┘
+                              │                      │
+                              ▼                      ▼
+                       ┌──────────────┐       ┌──────────────┐
+                       │  OCR Data    │       │  OCR Engine  │
+                       │  Service     │       │  (Paddle/    │
+                       │  (Angular)   │       │   TrOCR)     │
+                       └──────────────┘       └──────────────┘
+```
 
 ---
 
 ## 3. Component Design
 
-### 3.1 Core Components
+### 3.1 Frontend Components (Angular)
 
-#### 3.1.1 FastAPI Application (`app.py`)
+#### 3.1.1 Core Services
+
+| Service | Responsibility |
+|---------|---------------|
+| `DataStorageService` | API communication with backend |
+| `ConfigService` | Application configuration management |
+| `OcrDataService` | OCR data sharing between components |
+| `RegistrationService` | Pre-registration state management |
+| `BookingService` | Appointment booking logic |
+
+#### 3.1.2 Feature Modules
+
+| Module | Components |
+|--------|------------|
+| **Demographic** | Form generation, auto-fill, validation |
+| **File Upload** | Document upload, OCR integration |
+| **Booking** | Center selection, time slots, calendar |
+| **Summary** | Preview, confirmation, status display |
+
+#### 3.1.3 OCR Integration Component
+
+```typescript
+// OCR Integration Architecture
+OcrIntegrationComponent
+├── Opens OCR tool (localhost:8001) in iframe/popup
+├── Receives extracted data via postMessage
+├── Maps OCR fields to MOSIP schema
+└── Triggers form auto-fill via OcrDataService
+```
+
+### 3.2 Backend Components (Python)
+
+#### 3.2.1 FastAPI Application (`app.py`)
 
 **Responsibilities:**
-- HTTP request handling
-- Route management
+- HTTP request handling (OCR + MOSIP APIs)
 - File upload processing
-- Response serialization
-
-**Key Features:**
+- Static file serving (index.html, uploads)
 - CORS middleware for cross-origin requests
-- Multipart file upload support
-- Static file serving
-- Health check endpoints
 
-**Architecture Pattern:** Model-View-Controller (MVC)
+**Key Endpoints:**
+
+| Category | Endpoints |
+|----------|-----------|
+| OCR | `/api/upload`, `/api/verify` |
+| Auth | `/preregistration/v1/login/*` |
+| Applications | `/preregistration/v1/applications/*` |
+| Booking | `/preregistration/v1/appointment/*` |
+| Master Data | `/preregistration/v1/proxy/masterdata/*` |
+
+#### 3.2.2 OCR Processing Module
+
+```
+OCR Processing Pipeline
+│
+├── PaddleOCR (paddle_ocr_module.py)
+│   ├── Printed text extraction
+│   ├── Bounding box detection
+│   └── Confidence per detection
+│
+├── TrOCR (trocr_handwritten.py)
+│   ├── Handwritten text recognition
+│   ├── Line-level processing
+│   └── Transformer-based model
+│
+├── Parser (app.py)
+│   ├── Field extraction (Name, DOB, etc.)
+│   ├── Key-value normalization
+│   └── Confidence mapping
+│
+└── Quality Scorer (quality_score.py)
+    ├── Blur detection (Laplacian variance)
+    ├── Brightness analysis
+    └── Overall quality score
+```
+
+#### 3.2.3 MOSIP Mock Services
 
 ```python
-# Pseudo-structure
-class Application:
-    def __init__(self):
-        self.ocr_engine = OCREngine()
-        self.verifier = OCRVerifier()
-        self.quality_checker = QualityScore()
-        
-    @route("/api/upload")
-    async def upload_document(file):
-        quality = self.quality_checker.assess(file)
-        if quality.overall < THRESHOLD:
-            return quality_warning
-        
-        ocr_result = self.ocr_engine.extract(file)
-        return ocr_result
+# Mock Data Storage
+mosip_applications = {}  # In-memory application store
+mosip_appointments = {}  # In-memory appointment store
+
+# Key Mock Endpoints
+/preregistration/v1/config          → Configuration values
+/preregistration/v1/uispec/latest   → Form field definitions
+/preregistration/v1/applications/*  → CRUD for applications
+/preregistration/v1/appointment/*   → Booking management
 ```
 
-#### 3.1.2 OCR Processing Module
+#### 3.2.4 Field Mapper (`mosip_field_mapper.py`)
 
-**Components:**
-
-1. **PaddleOCR Wrapper** (`paddle_ocr_module.py`)
-   - Offline text extraction
-   - Confidence scoring per detection
-   - Multi-language support
-
-2. **TrOCR Wrapper** (`trocr_handwritten.py`)
-   - Handwritten text recognition
-   - Transformer-based model
-   - Line-level confidence scoring
-
-3. **Text Parser** (`app.py::parse_trocr_direct_v2`)
-   - Field normalization
-   - Confidence mapping
-   - Supports colonless formats
-
-**Design Pattern:** Strategy Pattern (multiple OCR strategies)
-
-```mermaid
-classDiagram
-    class OCREngine {
-        +extract_text()
-        +get_confidence()
-    }
-    
-    class PaddleOCRWrapper {
-        +extract_text()
-        +get_confidence()
-    }
-    
-    class TrOCRWrapper {
-        +extract_text()
-        +get_confidence()
-    }
-    
-    OCREngine <|-- PaddleOCRWrapper
-    OCREngine <|-- TrOCRWrapper
-```
-
-#### 3.1.3 Verification Module (`ocr_verifier.py`)
-
-**Responsibilities:**
-- Data validation
-- Format checking
-- Comparison logic
-- Confidence scoring
-
-**Validation Layers:**
-1. **Format Validation** - Email, phone, date formats
-2. **Content Validation** - Length, character sets
-3. **Cross-Reference** - Compare against original data
-4. **Confidence Scoring** - Calculate match percentages
-
-#### 3.1.4 Language Support (`language_support.py`)
-
-**Architecture:** Multi-tenant language configuration
-
-**Components:**
-- Translation dictionaries (EN, AR, HI)
-- Regex patterns per language
-- Field type mappings
-- OCR language codes
-
-**Design Pattern:** Strategy + Factory Pattern
+Maps OCR-extracted fields to MOSIP identity schema:
 
 ```python
-class LanguageLoader:
-    TRANSLATIONS = {
-        'en': {...},
-        'ar': {...},
-        'hi': {...}
-    }
-    
-    def get_regex_patterns(self) -> Dict:
-        return self.REGEX_PATTERNS[self.current_language]
+MOSIP_SCHEMA = {
+    "fullName": ["name", "full_name", "full name"],
+    "fatherName": ["father", "father_name", "father's name"],
+    "motherName": ["mother", "mother_name", "mother's name"],
+    "dateOfBirth": ["dob", "date_of_birth", "birth_date"],
+    "gender": ["sex", "gender"],
+    "phone": ["mobile", "phone_number"],
+    "email": ["email", "email_address"],
+    "addressLine1": ["address", "address_line_1"],
+    "postalCode": ["pin", "pin_code", "postal_code"],
+    "referenceIdentityNumber": ["aadhaar", "pan", "id_number"]
+}
 ```
-
-#### 3.1.5 MOSIP Integration Layer
-
-**Components:**
-
-1. **MOSIP Client** (`mosip_client.py`)
-   - API communication
-   - Authentication handling
-   - Error recovery
-
-2. **Field Mapper** (`mosip_field_mapper.py`)
-   - Schema transformation
-   - Field normalization
-
-3. **Packet Handler** (`packet_handler.py`)
-   - Packet creation
-   - Local storage
-   - Metadata management
-
-**Pattern:** Adapter Pattern (OCR → MOSIP schema)
 
 ---
 
@@ -267,134 +226,85 @@ class LanguageLoader:
 
 ### 4.1 OCR Extraction Flow
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant FastAPI
-    participant QualityCheck
-    participant OCREngine
-    participant Parser
-    participant Storage
-
-    User->>Frontend: Upload Document
-    Frontend->>FastAPI: POST /api/upload
-    FastAPI->>QualityCheck: Assess Image Quality
-    QualityCheck-->>FastAPI: Quality Report
-    
-    alt Quality >= Threshold
-        FastAPI->>OCREngine: Extract Text
-        OCREngine->>OCREngine: PaddleOCR/TrOCR
-        OCREngine-->>Parser: Raw Text + Confidences
-        Parser->>Parser: Parse & Normalize Fields
-        Parser-->>FastAPI: Structured Fields + Confidence
-        FastAPI->>Storage: Save to uploads/
-        FastAPI-->>Frontend: Success + Results
-        Frontend-->>User: Display Fields + Badges
-    else Quality < Threshold
-        FastAPI-->>Frontend: Quality Warning
-        Frontend-->>User: Retake Prompt
-    end
+```
+1. User uploads document (index.html)
+          │
+          ▼
+2. FastAPI receives file (/api/upload)
+          │
+          ▼
+3. Quality Assessment (quality_score.py)
+          │
+          ├── Quality < 70% → Return warning, suggest retake
+          │
+          ▼
+4. OCR Processing
+          │
+          ├── PaddleOCR → Printed text
+          ├── TrOCR → Handwritten text (optional)
+          │
+          ▼
+5. Field Parsing (parse_text_to_json_advanced)
+          │
+          ├── Key-value extraction
+          ├── Normalization
+          ├── Confidence mapping
+          │
+          ▼
+6. Response with extracted fields + confidence
 ```
 
-### 4.2 Verification Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant FastAPI
-    participant Verifier
-    participant LanguageSupport
-
-    User->>Frontend: Submit Data for Verification
-    Frontend->>FastAPI: POST /api/verify
-    FastAPI->>Verifier: Verify Data
-    
-    Verifier->>LanguageSupport: Get Validation Patterns
-    LanguageSupport-->>Verifier: Patterns
-    
-    loop For Each Field
-        Verifier->>Verifier: Validate Format
-        Verifier->>Verifier: Compare Values
-        Verifier->>Verifier: Calculate Confidence
-    end
-    
-    Verifier-->>FastAPI: Verification Report
-    FastAPI-->>Frontend: Results
-    Frontend-->>User: Display Report
-```
-
-### 4.3 MOSIP Integration Flow
-
-```mermaid
-sequenceDiagram
-    participant Frontend
-    participant FastAPI
-    participant FieldMapper
-    participant PacketHandler
-    participant MOSIPClient
-    participant MOSIP_API
-
-    Frontend->>FastAPI: POST /api/mosip/send
-    FastAPI->>FieldMapper: Map to MOSIP Schema
-    FieldMapper-->>FastAPI: MOSIP Data
-    
-    FastAPI->>PacketHandler: Create Packet
-    PacketHandler->>PacketHandler: Generate Packet ID
-    PacketHandler->>PacketHandler: Save to mock_packets/
-    PacketHandler-->>FastAPI: Packet Created
-    
-    Frontend->>FastAPI: POST /api/mosip/upload/{id}
-    FastAPI->>PacketHandler: Get Packet Data
-    PacketHandler-->>FastAPI: Packet JSON
-    
-    FastAPI->>MOSIPClient: Upload to Pre-Reg
-    MOSIPClient->>MOSIP_API: POST /preregistration
-    MOSIP_API-->>MOSIPClient: PRID
-    MOSIPClient-->>FastAPI: Success + PRID
-    FastAPI-->>Frontend: Upload Complete
-```
-
-### 4.4 Request-Response Lifecycle
+### 4.2 Pre-Registration Flow
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ 1. HTTP Request (Browser/API Client)                        │
-└──────────────────┬──────────────────────────────────────────┘
-                   ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 2. FastAPI Middleware (CORS, Authentication)                │
-└──────────────────┬──────────────────────────────────────────┘
-                   ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 3. Route Handler (Endpoint Function)                        │
-│    - Parse request body/files                               │
-│    - Validate inputs                                         │
-└──────────────────┬──────────────────────────────────────────┘
-                   ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 4. Business Logic Layer                                     │
-│    - Quality assessment                                     │
-│    - OCR processing                                          │
-│    - Verification                                            │
-│    - MOSIP integration                                       │
-└──────────────────┬──────────────────────────────────────────┘
-                   ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 5. Data Access Layer                                        │
-│    - File I/O                                                │
-│    - Packet storage                                          │
-│    - Cache lookup                                            │
-└──────────────────┬──────────────────────────────────────────┘
-                   ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 6. Response Serialization (JSON)                            │
-└──────────────────┬──────────────────────────────────────────┘
-                   ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 7. HTTP Response (Status Code + Body)                       │
-└─────────────────────────────────────────────────────────────┘
+1. User logs in (OTP validation)
+          │
+          ▼
+2. Create/Edit Application
+          │
+          ├── Manual form entry
+          │       OR
+          ├── OCR Auto-fill (via OcrDataService)
+          │
+          ▼
+3. Demographic Form Submission
+          │
+          ├── Frontend: createIdentityJSONDynamic()
+          ├── Creates identity object with all fields
+          ├── PUT /preregistration/v1/applications/prereg/{prid}
+          │
+          ▼
+4. Document Upload (optional)
+          │
+          ▼
+5. Appointment Booking
+          │
+          ├── Select registration center
+          ├── Choose date/time slot
+          │
+          ▼
+6. Preview & Confirmation
+```
+
+### 4.3 OCR to Form Auto-Fill Flow
+
+```
+┌─────────────────┐     postMessage     ┌─────────────────────────┐
+│  OCR Tool       │ ─────────────────▶  │  Angular App            │
+│  (index.html)   │                     │  (OcrIntegrationComponent)
+│                 │                     │           │              │
+│  Extracts:      │                     │           ▼              │
+│  • Name         │                     │  OcrDataService          │
+│  • Father Name  │                     │           │              │
+│  • Mother Name  │                     │           ▼              │
+│  • DOB          │                     │  DemographicComponent    │
+│  • Address      │                     │           │              │
+│                 │                     │           ▼              │
+│                 │                     │  autoFillFromOCR()       │
+│                 │                     │           │              │
+│                 │                     │           ▼              │
+│                 │                     │  Form fields populated   │
+└─────────────────┘                     └─────────────────────────┘
 ```
 
 ---
@@ -410,29 +320,32 @@ sequenceDiagram
 | **Uvicorn** | Latest | ASGI server |
 | **PaddlePaddle** | Latest | OCR engine |
 | **PaddleOCR** | Latest | OCR wrapper |
-| **PyTorch** | 2.6.0 | Deep learning |
-| **Transformers** | ≥4.30.0 | TrOCR model |
+| **PyTorch** | 2.x | Deep learning |
+| **Transformers** | ≥4.30 | TrOCR model |
 | **OpenCV** | Latest | Image processing |
 | **Pillow** | Latest | Image manipulation |
-| **NumPy** | Latest | Numerical ops |
 | **PyMuPDF** | Latest | PDF processing |
 
 ### 5.2 Frontend Technologies
 
-| Technology | Purpose |
-|------------|---------|
-| **HTML5** | Structure |
-| **CSS3** | Styling |
-| **JavaScript (ES6+)** | Interactivity |
-| **Alpine.js** | Reactive UI |
-| **Fetch API** | HTTP requests |
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| **Angular** | 8 | Frontend framework |
+| **TypeScript** | 3.x | Language |
+| **Angular Material** | 8.x | UI components |
+| **RxJS** | 6.x | Reactive programming |
+| **ngx-translate** | Latest | Internationalization |
+| **Moment.js** | Latest | Date handling |
 
 ### 5.3 Infrastructure
 
-- **Storage:** Local file system (`uploads/`, `mock_packets/`)
-- **Cache:** In-memory dictionaries
-- **Protocol:** HTTP/HTTPS
-- **Port:** 8001 (configurable)
+| Component | Details |
+|-----------|---------|
+| **Backend Port** | 8001 |
+| **Frontend Port** | 4200 |
+| **Storage** | Local file system |
+| **Cache** | In-memory dictionaries |
+| **Protocol** | HTTP (HTTPS for production) |
 
 ---
 
@@ -440,27 +353,23 @@ sequenceDiagram
 
 ### 6.1 Architectural Patterns
 
-1. **Layered Architecture**
-   - Clear separation of concerns
-   - Each layer depends only on the layer below
-
-2. **RESTful API Design**
-   - Resource-based URLs
-   - HTTP methods (GET, POST)
-   - JSON responses
-
-3. **Microkernel Architecture**
-   - Core system + plugins (OCR engines, languages)
+| Pattern | Usage |
+|---------|-------|
+| **Layered Architecture** | Clear separation of UI, business logic, data |
+| **RESTful API** | Resource-based URLs, HTTP methods |
+| **Mock-First** | Backend simulation for frontend development |
+| **Component-Based** | Angular modular architecture |
 
 ### 6.2 Code-Level Patterns
 
-| Pattern | Usage | Location |
-|---------|-------|----------|
-| **Strategy** | Multiple OCR engines | OCR modules |
-| **Factory** | Language loader creation | `language_support.py` |
-| **Adapter** | MOSIP field mapping | `mosip_field_mapper.py` |
-| **Singleton** | OCR engine instances | Global variables |
-| **Template Method** | Verification steps | `ocr_verifier.py` |
+| Pattern | Location | Usage |
+|---------|----------|-------|
+| **Strategy** | OCR modules | Multiple OCR engine support |
+| **Factory** | Language support | Translation loading |
+| **Adapter** | Field mapper | OCR → MOSIP schema |
+| **Singleton** | OCR engines | Single instance per engine |
+| **Observer** | RxJS services | Data change notifications |
+| **Dependency Injection** | Angular services | Service composition |
 
 ---
 
@@ -468,119 +377,97 @@ sequenceDiagram
 
 ### 7.1 Security Measures
 
-1. **Input Validation**
-   - File type verification
-   - Size limits
-   - Content sanitization
+| Layer | Measures |
+|-------|----------|
+| **Input Validation** | File type verification, size limits |
+| **CORS** | Configured origins for cross-domain requests |
+| **Data Sanitization** | Regex-based cleaning, XSS prevention |
+| **Error Handling** | Generic error messages, no sensitive data |
 
-2. **CORS Protection**
-   - Configured origins
-   - Credential handling
+### 7.2 Authentication (Mock Mode)
 
-3. **Data Sanitization**
-   - Regex-based cleaning
-   - Special character escaping
+- OTP-based login (accepts any 6-digit code)
+- Session management via localStorage
+- Token invalidation on logout
 
-4. **Error Handling**
-   - No sensitive data in errors
-   - Generic error messages
+### 7.3 Data Privacy
 
-### 7.2 Data Privacy
-
-- **Local Processing** - No data sent to external servers (except MOSIP)
-- **Temporary Storage** - Files cleaned up after processing
-- **No Logging of PII** - Personal data not logged
+- Local processing (no external data transmission except optional MOSIP)
+- Temporary file storage
+- No PII logging
 
 ---
 
-## 8. Scalability & Performance
+## 8. Integration Architecture
 
-### 8.1 Performance Optimizations
+### 8.1 Frontend-Backend Integration
 
-1. **Asynchronous I/O** - FastAPI async endpoints
-2. **Lazy Loading** - Models loaded on first use
-3. **Caching** - In-memory cache for uploaded images
-4. **Efficient Algorithms** - Optimized regex patterns
-
-### 8.2 Scalability Considerations
-
-**Horizontal Scaling:**
-- Stateless API design
-- Can deploy multiple instances behind load balancer
-
-**Vertical Scaling:**
-- GPU acceleration for TrOCR
-- Memory tuning for large PDFs
-
-### 8.3 Bottlenecks & Mitigation
-
-| Bottleneck | Mitigation |
-|------------|------------|
-| TrOCR model loading | Singleton instance, lazy init |
-| Large PDF processing | Page-by-page processing |
-| Multiple simultaneous uploads | Async processing, queue system |
-
----
-
-## 9. Integration Architecture
-
-### 9.1 MOSIP Integration
-
-**Integration Type:** REST API Client
-
-**Endpoints Used:**
-- `/preregistration` - Create pre-registration
-- Authentication endpoints
-
-**Data Flow:**
 ```
-OCR Fields → Field Mapper → MOSIP Schema → Packet → API Upload
+Angular App (4200)
+      │
+      │  HTTP Requests
+      │  - CORS enabled
+      │  - JSON payloads
+      │  - Multipart for files
+      ▼
+FastAPI Backend (8001)
 ```
 
-**Error Handling:**
-- Retry logic with exponential backoff
-- Fallback to local packet storage
-- Detailed error logging
+### 8.2 OCR-Form Integration
 
-### 9.2 Extensibility Points
+```
+OCR Tool (8001/index.html)
+      │
+      │  postMessage API
+      │  - Origin validation
+      │  - JSON data transfer
+      ▼
+Angular (OcrIntegrationComponent)
+      │
+      │  OcrDataService
+      │  - BehaviorSubject
+      │  - Field mapping
+      ▼
+DemographicComponent (autoFillFromOCR)
+```
 
-**Adding New OCR Engine:**
-1. Create wrapper class implementing standard interface
-2. Add to OCR engine initialization
-3. Update comparison logic
-4. Add UI selection option
+### 8.3 MOSIP Server Integration (Production)
 
-**Adding New Language:**
-1. Add translations to `language_support.py::TRANSLATIONS`
-2. Add regex patterns to `REGEX_PATTERNS`
-3. Add field types to `FIELD_TYPES`
-4. Update `SUPPORTED_LANGUAGES`
-5. Add UI dropdown option
+When `MOSIP_ENABLED=True`:
 
-**Adding New Verification Rule:**
-1. Extend `ocr_verifier.py` with new validation function
-2. Add to verification pipeline
-3. Update confidence scoring logic
+```
+FastAPI Mock APIs
+      │
+      │  Replaced by
+      ▼
+Real MOSIP Server
+      │
+      │  - Authentication (OAuth2)
+      │  - Real application storage
+      │  - Actual appointment booking
+      ▼
+MOSIP Pre-Registration Backend
+```
 
 ---
 
 ## Appendix A: System Metrics
 
 **Code Statistics:**
-- Lines of Python Code: ~8,000
-- Lines of HTML/CSS/JS: ~3,700
-- Number of API Endpoints: 12
-- Supported Languages: 3
-- Supported Field Types: 40+
+- Python Code: ~10,000 lines
+- TypeScript Code: ~25,000 lines
+- API Endpoints: 50+
+- Angular Components: 30+
+- Supported Languages: 3 (EN, AR, FR)
 
 **Performance Benchmarks:**
-- Average OCR Time: 2-5 seconds
+- OCR Processing: 2-5 seconds
+- Form Auto-fill: <100ms
+- API Response: <200ms
 - Quality Assessment: <100ms
-- Verification Time: <500ms
-- MOSIP Packet Creation: <200ms
 
 ---
 
-**Document Version:** 1.0.0  
-**Last Updated:** November 30, 2024  
+**Document Version:** 2.0.0  
+**Last Updated:** December 12, 2024  
 **Approved By:** Development Team
