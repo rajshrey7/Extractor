@@ -18,7 +18,7 @@
     </header>
     <p></p>
     <span class="readOnly" *ngIf="readOnlyMode">
-      ( {{ demographicLabels.read_only_message }} )
+      ( {{ demographicLabels?.read_only_message || 'Read Only' }} )
     </span>
     <hr />
   </div>
@@ -32,7 +32,8 @@
 
   <div class="file-upload__message">
     <b>
-      {{ documentLabels.text_filetype }} : {{ allowedFilesHtml }} &nbsp;{{ documentLabels.text_filesize }} : {{
+      {{ documentLabels?.text_filetype || 'File Type' }} : {{ allowedFilesHtml }} &nbsp;{{ documentLabels?.text_filesize
+      || 'File Size' }} : {{
       allowedFileSize }}
     </b>
   </div>
@@ -63,7 +64,7 @@
                   </mat-select>
                 </mat-form-field>
                 <mat-form-field class="file-upload__docrefid">
-                  <mat-label>{{ documentLabels.text_docrefid }}</mat-label>
+                  <mat-label>{{ documentLabels?.text_docrefid || 'Document Reference ID' }}</mat-label>
                   <input matInput value="{{document.selectedRefNumber}}"
                     (focusout)="handleDocRefInput($event, document.code)" (input)="changeRefNumber($event, i)"
                     placeholder="" (change)="handleDocRefInput($event, document.code)"
@@ -73,20 +74,20 @@
                   <input #fileUpload type="file" id="file_{{ i }}" (click)="fileUpload.value = null" value=""
                     (change)="handleFileInput($event, document.selectedDocName, document.code, document.selectedRefNumber)"
                     style="display: none;" />
-                  <input class="browseInput" value="{{ documentLabels.action_browse }}" type="button"
+                  <input class="browseInput" value="{{ documentLabels?.action_browse || 'Browse' }}" type="button"
                     (click)="clickOnButton(i)" [disabled]="disableNavigation || readOnlyMode || ((document.code === 'POA' && sameAsselected) ||
                   !document.selectedDocName ||
                   document.selectedDocName === '')" />
                 </span>
                 <span *ngIf="document.code === 'POA' && allApplicants">
-                  <span *ngIf="allApplicants.length >= 1"> {{ documentLabels.OR }}</span>
+                  <span *ngIf="allApplicants.length >= 1"> {{ documentLabels?.OR || 'OR' }}</span>
                   <span *ngIf="allApplicants.length >= 1">
                     <mat-form-field class="file-upload__or">
-                      <mat-select placeholder="{{ documentLabels.sameAs }}"
+                      <mat-select placeholder="{{ documentLabels?.sameAs || 'Same As' }}"
                         [disabled]="disableNavigation ||  readOnlyMode"
                         (selectionChange)="sameAsChange($event, users[0].files.documentsMetaData)" [(value)]="sameAs">
                         <mat-option value="">
-                          {{ documentLabels.sameAsNone }}
+                          {{ documentLabels?.sameAsNone || 'None' }}
                         </mat-option>
                         <mat-option *ngFor="let applicant of allApplicants" value="{{applicant.preRegistrationId}}">
                           <div *ngIf="applicant.applicantName">
@@ -121,7 +122,7 @@
                 !readOnlyMode && userForm.get(document.id) &&
                 userForm.get(document.id).hasError('required') && userForm.get(document.id).touched">
                 {{document.labelName[userPrefLanguage]}}
-                {{demographicLabels.validation.requiredMessage}}
+                {{demographicLabels?.validation?.requiredMessage || 'is required'}}
               </mat-error>
             </div>
           </div>
@@ -155,13 +156,13 @@
 <div class="file-upload__button-container" *ngIf="users[0] && dataLoaded">
   <button class="user__btn user__btn-back" type="button" (click)="onBack()" [disabled]="disableNavigation"
     *ngIf="isModify == 'false'">
-    {{ documentLabels.action_back }}
+    {{ documentLabels?.action_back || 'Back' }}
   </button>
   <span class="spacer"></span>
   <button *ngIf="isModify == 'false'" class="user__btn" type="button" (click)="onNext()" [disabled]="disableNavigation">
-    {{ documentLabels.action_continue }}
+    {{ documentLabels?.action_continue || 'Continue' }}
   </button>
   <button [disabled]="disableNavigation" *ngIf="isModify == 'true'" class="user__btn" type="button" (click)="onNext()">
-    {{ demographicLabels.action_preview }}
+    {{ demographicLabels?.action_preview || 'Preview' }}
   </button>
 </div>
