@@ -140,7 +140,8 @@ export class FileUploadComponent implements OnInit, OnDestroy {
       appConstants.CONFIG_KEYS.preregistration_identity_name
     );
     this.getFileSize();
-    this.allowedFiles = this.config.getConfigByKey(appConstants.CONFIG_KEYS.preregistration_document_alllowe_files).split(",");
+    const allowedFilesConfig = this.config.getConfigByKey(appConstants.CONFIG_KEYS.preregistration_document_alllowe_files);
+    this.allowedFiles = allowedFilesConfig ? allowedFilesConfig.split(",") : ['application/pdf', 'image/jpeg', 'image/png'];
     this.getAllowedFileTypes(this.allowedFiles);
     this.loginId = localStorage.getItem("loginId");
     await this.getAllApplicants();

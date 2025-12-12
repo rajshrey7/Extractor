@@ -258,17 +258,46 @@ export class DemographicComponent
 
     let filledCount = 0;
 
+    // Helper function to set a form control value
+    const setFieldValue = (fieldId: string, value: any): boolean => {
+      let success = false;
+
+      // Try with language suffix first (e.g., fullName_eng)
+      for (const lang of this.dataCaptureLanguages) {
+        const controlName = `${fieldId}_${lang}`;
+        if (this.userForm.controls[controlName]) {
+          try {
+            this.userForm.controls[controlName].setValue(value);
+            console.log(`✅ Set ${controlName} = ${value}`);
+            success = true;
+          } catch (e) {
+            console.log(`❌ Error setting ${controlName}:`, e);
+          }
+        }
+      }
+
+      // Also try without suffix for non-multilingual fields
+      if (this.userForm.controls[fieldId]) {
+        try {
+          this.userForm.controls[fieldId].setValue(value);
+          console.log(`✅ Set ${fieldId} = ${value}`);
+          success = true;
+        } catch (e) {
+          console.log(`❌ Error setting ${fieldId}:`, e);
+        }
+      }
+
+      return success;
+    };
+
     // Handle date of birth specially
     if (ocrData['dateOfBirth']) {
       const dobValue = ocrData['dateOfBirth'];
       console.log('Processing DOB:', dobValue);
 
-      // Try to parse and format the date
       let dateValue: any = null;
       try {
-        // Try different date formats - expanded list
         const dateStr = String(dobValue).trim();
-        // Common formats from various documents
         const dateFormats = [
           'DD/MM/YYYY', 'DD-MM-YYYY', 'DD.MM.YYYY',
           'YYYY/MM/DD', 'YYYY-MM-DD', 'YYYY.MM.DD',
@@ -283,13 +312,11 @@ export class DemographicComponent
           dateValue = parsed.toDate();
           console.log('Parsed DOB to:', dateValue);
         } else {
-          // Try extracting date from text like "DOB: 08-06-2005"
           const dateMatch = dateStr.match(/(\d{1,2}[-\/\.]\d{1,2}[-\/\.]\d{2,4})/);
           if (dateMatch) {
             parsed = moment(dateMatch[1], dateFormats);
             if (parsed.isValid()) {
               dateValue = parsed.toDate();
-              console.log('Extracted and parsed DOB:', dateValue);
             }
           }
         }
@@ -297,7 +324,6 @@ export class DemographicComponent
         console.log('Could not parse date:', e);
       }
 
-      // Try different DOB control names
       const dobControls = ['dateOfBirth', 'dob', 'DOB'];
       for (const dobCtrl of dobControls) {
         if (this.userForm.controls[dobCtrl]) {
@@ -318,12 +344,11 @@ export class DemographicComponent
       const genderValue = String(ocrData['gender']).toUpperCase().trim();
       console.log('Processing Gender:', genderValue);
 
-      // Map OCR gender to MOSIP gender codes
       let genderCode = '';
       if (genderValue.includes('MALE') && !genderValue.includes('FEMALE')) {
-        genderCode = 'MLE';  // MOSIP code for Male
+        genderCode = 'MLE';
       } else if (genderValue.includes('FEMALE')) {
-        genderCode = 'FLE';  // MOSIP code for Female
+        genderCode = 'FLE';
       } else if (genderValue === 'M') {
         genderCode = 'MLE';
       } else if (genderValue === 'F') {
@@ -341,67 +366,90 @@ export class DemographicComponent
       }
     }
 
-    // Map other OCR fields to MOSIP form field IDs
-    const fieldMapping: { [key: string]: string } = {
-      'fullName': 'fullName',
-      'Name': 'fullName',
-      'phone': 'phone',
-      'Mobile': 'phone',
-      'email': 'email',
-      'Email': 'email',
-      'addressLine1': 'addressLine1',
-      'Address': 'addressLine1',
-      'address': 'addressLine1',
-      'postalCode': 'postalCode',
-      'Pin Code': 'postalCode',
-      'pincode': 'postalCode',
-      'city': 'city',
-      'City': 'city',
-      'district': 'city',
-      'District': 'city',
-      'state': 'region',
-      'State': 'region',
-      'province': 'province',
-      'Province': 'province'
-    };
+    // Comprehensive field mapping - OCR field to MOSIP form field ID
+    const fieldMappings: { ocrFields: string[], mosipFieldId: string }[] = [
+      // Full Name
+      { ocrFields: ['fullName', 'Name', 'name', 'Full Name', 'Applicant Name', 'Candidate Name'], mosipFieldId: 'fullName' },
 
-    for (const [ocrField, mosipFieldId] of Object.entries(fieldMapping)) {
-      if (!ocrData[ocrField]) continue;
+      // Father's Name
+      { ocrFields: ['fatherName', 'Father Name', 'Father', 'father', "Father's Name", 'Father_Name'], mosipFieldId: 'fatherName' },
 
-      const value = ocrData[ocrField];
-      console.log(`Trying to fill ${mosipFieldId} with value: ${value}`);
+      // Mother's Name
+      { ocrFields: ['motherName', 'Mother Name', 'Mother', 'mother', "Mother's Name", 'Mother_Name'], mosipFieldId: 'motherName' },
 
-      // Try with language suffix (e.g., fullName_eng)
-      for (const lang of this.dataCaptureLanguages) {
-        const controlName = `${mosipFieldId}_${lang}`;
-        if (this.userForm.controls[controlName]) {
-          try {
-            this.userForm.controls[controlName].setValue(value);
-            console.log(`✅ Set ${controlName} = ${value}`);
-            filledCount++;
-          } catch (e) {
-            console.log(`❌ Error setting ${controlName}:`, e);
-          }
+      // Phone
+      { ocrFields: ['phone', 'Phone', 'Mobile', 'mobile', 'Contact', 'Phone No', 'Mobile No', 'Phone Number'], mosipFieldId: 'phone' },
+
+      // Email
+      { ocrFields: ['email', 'Email', 'E-mail', 'Email ID', 'EmailID'], mosipFieldId: 'email' },
+
+      // Address
+      { ocrFields: ['addressLine1', 'Address', 'address', 'Permanent Address', 'Present Address', 'Residence', 'Address Line 1'], mosipFieldId: 'addressLine1' },
+
+      // Postal Code
+      { ocrFields: ['postalCode', 'Postal Code', 'Pin Code', 'PIN Code', 'pincode', 'PIN', 'Zip Code', 'ZipCode'], mosipFieldId: 'postalCode' },
+
+      // City/District
+      { ocrFields: ['city', 'City', 'district', 'District', 'Town', 'Village'], mosipFieldId: 'city' },
+
+      // State/Region
+      { ocrFields: ['region', 'Region', 'state', 'State'], mosipFieldId: 'region' },
+
+      // Province
+      { ocrFields: ['province', 'Province'], mosipFieldId: 'province' },
+
+      // Reference Identity Number (Aadhaar, PAN, etc.)
+      { ocrFields: ['referenceIdentityNumber', 'Registration No', 'Certificate No', 'Aadhaar', 'Aadhaar No', 'PAN', 'Passport No', 'ID Number'], mosipFieldId: 'referenceIdentityNumber' },
+
+      // Place of Birth
+      { ocrFields: ['placeOfBirth', 'Place of Birth', 'Birth Place', 'birthPlace'], mosipFieldId: 'placeOfBirth' },
+    ];
+
+    // Process each field mapping
+    for (const mapping of fieldMappings) {
+      let value = null;
+
+      // Find the first OCR field that has a value
+      for (const ocrField of mapping.ocrFields) {
+        if (ocrData[ocrField]) {
+          value = ocrData[ocrField];
+          break;
         }
       }
 
-      // Also try without suffix for non-multilingual fields
-      if (this.userForm.controls[mosipFieldId]) {
-        try {
-          this.userForm.controls[mosipFieldId].setValue(value);
-          console.log(`✅ Set ${mosipFieldId} = ${value}`);
+      if (value) {
+        console.log(`Trying to fill ${mapping.mosipFieldId} with value: ${value}`);
+        if (setFieldValue(mapping.mosipFieldId, value)) {
           filledCount++;
-        } catch (e) {
-          console.log(`❌ Error setting ${mosipFieldId}:`, e);
         }
+      }
+    }
+
+    // Also try to fill any remaining OCR fields that might match form controls directly
+    for (const [ocrKey, ocrValue] of Object.entries(ocrData)) {
+      if (!ocrValue) continue;
+
+      // Skip fields we already processed
+      const processedFields = ['dateOfBirth', 'gender', 'fullName', 'fatherName', 'motherName',
+        'phone', 'email', 'addressLine1', 'postalCode', 'city', 'region',
+        'province', 'referenceIdentityNumber', 'placeOfBirth'];
+      if (processedFields.includes(ocrKey)) continue;
+
+      // Try to set directly if form control exists
+      if (setFieldValue(ocrKey, ocrValue)) {
+        filledCount++;
       }
     }
 
     if (filledCount > 0) {
       this.ocrDataAvailable = true;
       console.log(`✅ Auto-filled ${filledCount} fields from OCR data`);
+
+      // Mark form as dirty to show changes
+      this.userForm.markAsDirty();
     } else {
       console.log('❌ Could not auto-fill any fields. Check form control names.');
+      console.log('Available controls:', Object.keys(this.userForm.controls));
     }
   }
 
@@ -2007,8 +2055,9 @@ export class DemographicComponent
       });
       if (this.userForm.valid) {
         const identity = this.createIdentityJSONDynamic(false);
+        console.log('📤 Submitting identity:', JSON.stringify(identity, null, 2));
         const request = this.createRequestJSON(identity);
-        //console.log(request);
+        console.log('📤 Full request:', JSON.stringify(request, null, 2));
         const responseJSON = this.createResponseJSON(identity);
         //console.log(responseJSON);
         this.dataUploadComplete = false;

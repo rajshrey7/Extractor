@@ -7,7 +7,7 @@
 </div> -->
 <div class="file-upload" *ngIf="users[0] && dataLoaded">
   <div class="user">
-    <header>{{ documentLabels.title_document}}
+    <header>{{ documentLabels?.title_document || 'Document Upload' }}
       <span>
         (
         <span *ngFor="let dataCaptureLang of dataCaptureLanguagesLabels;index as labelsIndex">

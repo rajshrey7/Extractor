@@ -1514,7 +1514,22 @@ async def upload_image(
                 parsed_fields, field_confidences = parse_trocr_direct_v2(trocr_text, trocr_line_confidences)
                 print(f"🔍 Parsed field confidences: {field_confidences}")
                 
-                parsed_metadata = {}  # TrOCR doesn't need metadata
+                # POST-PROCESSING: Clean the extracted data
+                print("🧹 Cleaning extracted TrOCR data...")
+                try:
+                    from data_cleaner import clean_ocr_data, get_data_quality
+                    cleaned_fields = clean_ocr_data(parsed_fields)
+                    quality_metrics = get_data_quality(cleaned_fields, parsed_fields)
+                    print(f"✅ Data cleaned: {quality_metrics['valid_fields']}/{quality_metrics['total_extracted']} fields retained")
+                    if quality_metrics.get('removed_field_names'):
+                        print(f"   Removed: {', '.join(quality_metrics['removed_field_names'])}")
+                    
+                    # Use cleaned fields
+                    parsed_fields = cleaned_fields
+                    parsed_metadata = {'data_quality': quality_metrics}
+                except Exception as clean_err:
+                    print(f"⚠️ Data cleaning error (using uncleaned data): {clean_err}")
+                    parsed_metadata = {}
                 
                 # Return TrOCR results with proper confidence format
                 return JSONResponse(content={
@@ -1607,6 +1622,26 @@ async def upload_image(
             
             # Parse text into structured fields WITH blocks for spatial extraction
             extracted_fields, extracted_metadata = parse_text_to_json_advanced(paddle_text, blocks_data=paddle_blocks)
+            
+            # POST-PROCESSING: Clean the extracted data
+            print("🧹 Cleaning extracted data...")
+            try:
+                from data_cleaner import clean_ocr_data, get_data_quality
+                cleaned_fields = clean_ocr_data(extracted_fields)
+                quality_metrics = get_data_quality(cleaned_fields, extracted_fields)
+                print(f"✅ Data cleaned: {quality_metrics['valid_fields']}/{quality_metrics['total_extracted']} fields retained")
+                if quality_metrics.get('removed_field_names'):
+                    print(f"   Removed: {', '.join(quality_metrics['removed_field_names'])}")
+                
+                # Use cleaned fields instead of raw extracted_fields
+                extracted_fields = cleaned_fields
+                
+                # Add quality info to metadata
+                extracted_metadata['data_quality'] = quality_metrics
+            except Exception as clean_err:
+                print(f"⚠️ Data cleaning error (using uncleaned data): {clean_err}")
+                import traceback
+                traceback.print_exc()
             
             # Merge TrOCR confidence scores into metadata
             # For each field extracted by PaddleOCR, add TrOCR confidence if available
@@ -2327,7 +2362,10 @@ async def mosip_login_config():
             "preregistration.workflow.demographic": "true",
             "preregistration.workflow.documentupload": "true",
             "preregistration.workflow.booking": "true",
-            "preregistration.preview.fields": "fullName,dateOfBirth,gender,phone,email",
+            "preregistration.preview.fields": "fullName,fatherName,motherName,dateOfBirth,gender,residenceStatus,addressLine1,region,province,city,postalCode,phone,email,referenceIdentityNumber",
+            "preregistration.documentupload.allowed.file.type": "application/pdf,image/jpeg,image/png,image/jpg",
+            "preregistration.documentupload.allowed.file.size": "2000000",
+            "preregistration.documentupload.allowed.file.name.length": "50",
             "mosip.notificationtype": "EMAIL|SMS"
         },
         "errors": None
@@ -2472,13 +2510,17 @@ async def mosip_uispec():
                         make_field("fullName", "Full Name", "الاسم الكامل", "textbox", alignment_group=1),
                         make_field("dateOfBirth", "Date of Birth", "تاريخ الولادة", "ageDate", "string", alignment_group=1),
                         make_field("gender", "Gender", "جنس", "dropdown", is_dynamic=True, alignment_group=1),
+                        make_field("fatherName", "Father's Name", "اسم الأب", "textbox", required=False, alignment_group=2),
+                        make_field("motherName", "Mother's Name", "اسم الأم", "textbox", required=False, alignment_group=2),
                         make_field("residenceStatus", "Residence Status", "حالة الإقامة", "dropdown", is_dynamic=True, alignment_group=2),
-                        make_field("addressLine1", "Address Line 1", "العنوان", "textbox", required=False, alignment_group=2),
-                        make_field("region", "Region", "منطقة", "dropdown", alignment_group=3, location_hierarchy_level=1),
-                        make_field("province", "Province", "مقاطعة", "dropdown", alignment_group=3, location_hierarchy_level=2),
-                        make_field("city", "City", "مدينة", "dropdown", alignment_group=3, location_hierarchy_level=5),
-                        make_field("phone", "Phone", "هاتف", "textbox", "string", required=False, alignment_group=4),
-                        make_field("email", "Email", "بريد إلكتروني", "textbox", "string", required=False, alignment_group=4),
+                        make_field("addressLine1", "Address Line 1", "العنوان", "textbox", required=False, alignment_group=3),
+                        make_field("region", "Region", "منطقة", "dropdown", alignment_group=4, location_hierarchy_level=1),
+                        make_field("province", "Province", "مقاطعة", "dropdown", alignment_group=4, location_hierarchy_level=2),
+                        make_field("city", "City", "مدينة", "dropdown", alignment_group=4, location_hierarchy_level=5),
+                        make_field("postalCode", "Postal Code", "الرمز البريدي", "textbox", "string", required=False, alignment_group=4),
+                        make_field("phone", "Phone", "هاتف", "textbox", "string", required=False, alignment_group=5),
+                        make_field("email", "Email", "بريد إلكتروني", "textbox", "string", required=False, alignment_group=5),
+                        make_field("referenceIdentityNumber", "Reference ID Number", "رقم الهوية المرجعية", "textbox", "string", required=False, alignment_group=5),
                     ],
                     "locationHierarchy": ["region", "province", "city"]
                 }
@@ -2584,10 +2626,16 @@ async def mosip_update_application(prid: str, request: Request):
     """Mock update pre-registration application - stores the data"""
     try:
         body = await request.json()
+        print(f"\n📥 Received PUT request for {prid}")
+        print(f"📥 Full body: {body}")
+        
         # Store the submitted data
+        demo_details = body.get("request", {}).get("demographicDetails", body)
+        print(f"📥 demographicDetails: {demo_details}")
+        
         mosip_applications[prid] = {
             "preRegistrationId": prid,
-            "demographicDetails": body.get("request", {}).get("demographicDetails", body),
+            "demographicDetails": demo_details,
             "statusCode": "Pending_Appointment",
             "updatedDateTime": "2024-01-01T00:00:00.000Z"
         }
@@ -2657,15 +2705,19 @@ async def mosip_get_application(prid: str):
         # Build proper identity structure with arrays for all multilingual fields
         proper_identity = {
             "fullName": identity.get("fullName") if isinstance(identity.get("fullName"), list) else [{"language": "eng", "value": str(identity.get("fullName", identity.get("fullName_eng", "User")))}],
+            "fatherName": identity.get("fatherName") if isinstance(identity.get("fatherName"), list) else [{"language": "eng", "value": str(identity.get("fatherName", identity.get("fatherName_eng", "")))}] if identity.get("fatherName") or identity.get("fatherName_eng") else [{"language": "eng", "value": ""}],
+            "motherName": identity.get("motherName") if isinstance(identity.get("motherName"), list) else [{"language": "eng", "value": str(identity.get("motherName", identity.get("motherName_eng", "")))}] if identity.get("motherName") or identity.get("motherName_eng") else [{"language": "eng", "value": ""}],
             "dateOfBirth": identity.get("dateOfBirth", "1990/01/01"),
             "gender": identity.get("gender") if isinstance(identity.get("gender"), list) else [{"language": "eng", "value": "Male"}],
             "residenceStatus": identity.get("residenceStatus") if isinstance(identity.get("residenceStatus"), list) else [{"language": "eng", "value": "Non-Foreigner"}],
+            "addressLine1": identity.get("addressLine1") if isinstance(identity.get("addressLine1"), list) else [{"language": "eng", "value": str(identity.get("addressLine1", identity.get("addressLine1_eng", "")))}] if identity.get("addressLine1") or identity.get("addressLine1_eng") else [{"language": "eng", "value": ""}],
             "region": identity.get("region") if isinstance(identity.get("region"), list) else [{"language": "eng", "value": "Rabat-Salé-Kénitra"}],
             "province": identity.get("province") if isinstance(identity.get("province"), list) else [{"language": "eng", "value": "Rabat"}],
             "city": identity.get("city") if isinstance(identity.get("city"), list) else [{"language": "eng", "value": "Rabat City"}],
             "postalCode": identity.get("postalCode", "10000"),
             "phone": identity.get("phone", "0612345678"),
-            "email": identity.get("email", "test@example.com")
+            "email": identity.get("email", "test@example.com"),
+            "referenceIdentityNumber": identity.get("referenceIdentityNumber", "")
         }
         
         print(f"📖 Proper identity: {proper_identity}")
@@ -2694,15 +2746,19 @@ async def mosip_get_application(prid: str):
             "demographicDetails": {
                 "identity": {
                     "fullName": [{"language": "eng", "value": "Test User"}],
+                    "fatherName": [{"language": "eng", "value": ""}],
+                    "motherName": [{"language": "eng", "value": ""}],
                     "dateOfBirth": "1990/01/01",
                     "gender": [{"language": "eng", "value": "Male"}],
                     "residenceStatus": [{"language": "eng", "value": "Non-Foreigner"}],
+                    "addressLine1": [{"language": "eng", "value": ""}],
                     "region": [{"language": "eng", "value": "Rabat-Salé-Kénitra"}],
                     "province": [{"language": "eng", "value": "Rabat"}],
                     "city": [{"language": "eng", "value": "Rabat City"}],
                     "postalCode": "10000",
                     "phone": "0612345678",
-                    "email": "test@example.com"
+                    "email": "test@example.com",
+                    "referenceIdentityNumber": ""
                 }
             },
             "documents": []
@@ -2840,7 +2896,218 @@ async def mosip_dynamic_fields(langCode: str = None, pageNumber: str = None, pag
         "errors": None
     }
 
+@app.get("/preregistration/v1/proxy/masterdata/gendertypes")
+async def mosip_gender_types():
+    """Mock get gender types"""
+    return {
+        "response": {
+            "genderType": [
+                {"code": "MLE", "genderName": "Male", "langCode": "eng", "isActive": True},
+                {"code": "FLE", "genderName": "Female", "langCode": "eng", "isActive": True}
+            ]
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/individualtypes")
+async def mosip_individual_types():
+    """Mock get individual/resident types"""
+    return {
+        "response": {
+            "individualTypes": [
+                {"code": "FR", "name": "Foreigner", "langCode": "eng", "isActive": True},
+                {"code": "NFR", "name": "Non-Foreigner", "langCode": "eng", "isActive": True}
+            ]
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/locationHierarchyLevels/{lang_code}")
+async def mosip_location_hierarchy_levels_by_lang(lang_code: str):
+    """Mock get location hierarchy levels by language"""
+    return {
+        "response": {
+            "locationHierarchyLevels": [
+                {"hierarchyLevel": 0, "hierarchyLevelName": "Country", "langCode": lang_code, "isActive": True},
+                {"hierarchyLevel": 1, "hierarchyLevelName": "Region", "langCode": lang_code, "isActive": True},
+                {"hierarchyLevel": 2, "hierarchyLevelName": "Province", "langCode": lang_code, "isActive": True},
+                {"hierarchyLevel": 3, "hierarchyLevelName": "City", "langCode": lang_code, "isActive": True},
+                {"hierarchyLevel": 4, "hierarchyLevelName": "Zone", "langCode": lang_code, "isActive": True},
+                {"hierarchyLevel": 5, "hierarchyLevelName": "Postal Code", "langCode": lang_code, "isActive": True}
+            ]
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/applications/appointment/slots/availability/{center_id}")
+async def mosip_appointment_slots_availability_new(center_id: str):
+    """Mock get appointment slots availability for a registration center"""
+    from datetime import datetime, timedelta
+    
+    # Generate slots for next 14 days
+    center_details = []
+    today = datetime.now()
+    for day in range(1, 15):
+        date = today + timedelta(days=day)
+        date_str = date.strftime("%Y-%m-%d")
+        # Skip weekends
+        if date.weekday() < 5:
+            center_details.append({
+                "date": date_str,
+                "timeSlots": [
+                    {"fromTime": "09:00:00", "toTime": "09:15:00", "availability": 5},
+                    {"fromTime": "09:15:00", "toTime": "09:30:00", "availability": 5},
+                    {"fromTime": "09:30:00", "toTime": "09:45:00", "availability": 3},
+                    {"fromTime": "09:45:00", "toTime": "10:00:00", "availability": 4},
+                    {"fromTime": "10:00:00", "toTime": "10:15:00", "availability": 5},
+                    {"fromTime": "10:15:00", "toTime": "10:30:00", "availability": 5},
+                    {"fromTime": "10:30:00", "toTime": "10:45:00", "availability": 4},
+                    {"fromTime": "10:45:00", "toTime": "11:00:00", "availability": 5},
+                    {"fromTime": "14:00:00", "toTime": "14:15:00", "availability": 5},
+                    {"fromTime": "14:15:00", "toTime": "14:30:00", "availability": 4},
+                    {"fromTime": "14:30:00", "toTime": "14:45:00", "availability": 5},
+                    {"fromTime": "14:45:00", "toTime": "15:00:00", "availability": 3},
+                    {"fromTime": "15:00:00", "toTime": "15:15:00", "availability": 5},
+                    {"fromTime": "15:15:00", "toTime": "15:30:00", "availability": 4}
+                ]
+            })
+    
+    return {
+        "response": {
+            "regCenterId": center_id,
+            "centerDetails": center_details
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/getcoordinatespecificregistrationcenters/{lang_code}/{longitude}/{latitude}/{distance}")
+async def mosip_nearby_centers_by_coords(lang_code: str, longitude: str, latitude: str, distance: str = "2000"):
+    """Mock get nearby registration centers by coordinates"""
+    return {
+        "response": {
+            "registrationCenters": [
+                {
+                    "id": "10001",
+                    "name": "MOSIP Registration Center - Nearby 1",
+                    "centerTypeCode": "REG",
+                    "addressLine1": "123 Main Street",
+                    "addressLine2": "Downtown Area",
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "locationCode": "RABAT_CITY",
+                    "langCode": lang_code,
+                    "numberOfKiosks": 5,
+                    "perKioskProcessTime": "00:15:00",
+                    "centerStartTime": "09:00:00",
+                    "centerEndTime": "17:00:00",
+                    "lunchStartTime": "13:00:00",
+                    "lunchEndTime": "14:00:00",
+                    "isActive": True,
+                    "contactPhone": "+212-537-123456",
+                    "workingHours": "9:00 AM - 5:00 PM"
+                },
+                {
+                    "id": "10002",
+                    "name": "MOSIP Registration Center - Nearby 2",
+                    "centerTypeCode": "REG",
+                    "addressLine1": "456 Center Avenue",
+                    "addressLine2": "City Center",
+                    "latitude": str(float(latitude) + 0.01),
+                    "longitude": str(float(longitude) + 0.01),
+                    "locationCode": "RABAT_CITY",
+                    "langCode": lang_code,
+                    "numberOfKiosks": 8,
+                    "perKioskProcessTime": "00:15:00",
+                    "centerStartTime": "08:00:00",
+                    "centerEndTime": "16:00:00",
+                    "lunchStartTime": "12:00:00",
+                    "lunchEndTime": "13:00:00",
+                    "isActive": True,
+                    "contactPhone": "+212-537-654321",
+                    "workingHours": "8:00 AM - 4:00 PM"
+                }
+            ]
+        },
+        "errors": None
+    }
+
 @app.get("/preregistration/v1/proxy/masterdata/locations/immediatechildren/{loc_code}/{lang_code}")
+async def mosip_location_immediate_children(loc_code: str, lang_code: str):
+    """Mock location hierarchy - returns immediate children of a location"""
+    # Location hierarchy: MOR (country) -> regions -> provinces -> cities
+    location_data = {
+        "MOR": [  # Morocco regions
+            {"code": "RSK", "name": "Rabat-Salé-Kénitra", "hierarchyLevel": 1, "hierarchyName": "Region", "parentLocCode": "MOR", "isActive": True, "langCode": lang_code},
+            {"code": "CMK", "name": "Casablanca-Settat", "hierarchyLevel": 1, "hierarchyName": "Region", "parentLocCode": "MOR", "isActive": True, "langCode": lang_code},
+            {"code": "FMK", "name": "Fès-Meknès", "hierarchyLevel": 1, "hierarchyName": "Region", "parentLocCode": "MOR", "isActive": True, "langCode": lang_code}
+        ],
+        "RSK": [  # Rabat-Salé-Kénitra provinces
+            {"code": "RAB", "name": "Rabat", "hierarchyLevel": 2, "hierarchyName": "Province", "parentLocCode": "RSK", "isActive": True, "langCode": lang_code},
+            {"code": "SAL", "name": "Salé", "hierarchyLevel": 2, "hierarchyName": "Province", "parentLocCode": "RSK", "isActive": True, "langCode": lang_code},
+            {"code": "KEN", "name": "Kénitra", "hierarchyLevel": 2, "hierarchyName": "Province", "parentLocCode": "RSK", "isActive": True, "langCode": lang_code}
+        ],
+        "RAB": [  # Rabat cities
+            {"code": "RABAT_CITY", "name": "Rabat City", "hierarchyLevel": 3, "hierarchyName": "City", "parentLocCode": "RAB", "isActive": True, "langCode": lang_code},
+            {"code": "TEMARA", "name": "Témara", "hierarchyLevel": 3, "hierarchyName": "City", "parentLocCode": "RAB", "isActive": True, "langCode": lang_code}
+        ],
+        "CMK": [  # Casablanca provinces
+            {"code": "CAS", "name": "Casablanca", "hierarchyLevel": 2, "hierarchyName": "Province", "parentLocCode": "CMK", "isActive": True, "langCode": lang_code},
+            {"code": "SET", "name": "Settat", "hierarchyLevel": 2, "hierarchyName": "Province", "parentLocCode": "CMK", "isActive": True, "langCode": lang_code}
+        ],
+        "CAS": [  # Casablanca cities
+            {"code": "CASA_CITY", "name": "Casablanca City", "hierarchyLevel": 3, "hierarchyName": "City", "parentLocCode": "CAS", "isActive": True, "langCode": lang_code},
+            {"code": "MOHAMMEDIA", "name": "Mohammedia", "hierarchyLevel": 3, "hierarchyName": "City", "parentLocCode": "CAS", "isActive": True, "langCode": lang_code}
+        ],
+        "RABAT_CITY": [  # Postal codes for Rabat City
+            {"code": "10000", "name": "10000", "hierarchyLevel": 4, "hierarchyName": "Postal Code", "parentLocCode": "RABAT_CITY", "isActive": True, "langCode": lang_code},
+            {"code": "10001", "name": "10001", "hierarchyLevel": 4, "hierarchyName": "Postal Code", "parentLocCode": "RABAT_CITY", "isActive": True, "langCode": lang_code},
+            {"code": "10002", "name": "10002", "hierarchyLevel": 4, "hierarchyName": "Postal Code", "parentLocCode": "RABAT_CITY", "isActive": True, "langCode": lang_code}
+        ]
+    }
+    
+    locations = location_data.get(loc_code, [])
+    return {
+        "response": {
+            "locations": locations
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/locations/info/{loc_code}/{lang_code}")
+async def mosip_location_info_by_code(loc_code: str, lang_code: str):
+    """Mock get location info by code"""
+    # Simple location name lookup
+    location_names = {
+        "MOR": "Morocco",
+        "RSK": "Rabat-Salé-Kénitra",
+        "CMK": "Casablanca-Settat",
+        "FMK": "Fès-Meknès",
+        "RAB": "Rabat",
+        "SAL": "Salé",
+        "KEN": "Kénitra",
+        "CAS": "Casablanca",
+        "SET": "Settat",
+        "RABAT_CITY": "Rabat City",
+        "TEMARA": "Témara",
+        "CASA_CITY": "Casablanca City",
+        "MOHAMMEDIA": "Mohammedia",
+        "10000": "10000",
+        "10001": "10001",
+        "10002": "10002"
+    }
+    
+    name = location_names.get(loc_code, loc_code)
+    return {
+        "response": {
+            "code": loc_code,
+            "name": name,
+            "langCode": lang_code,
+            "isActive": True
+        },
+        "errors": None
+    }
+
+@app.get("/preregistration/v1/proxy/masterdata/locations/{loc_code}/{lang_code}")
 async def mosip_location_children(loc_code: str, lang_code: str):
     """Mock location hierarchy - returns children based on parent location"""
     # Location hierarchy: MOR (country) -> regions -> provinces -> cities

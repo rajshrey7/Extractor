@@ -83,49 +83,103 @@ export class OcrDataService {
 
         const mappedData: any = {};
 
-        // Field mapping from OCR to MOSIP
+        // Field mapping from OCR to MOSIP - comprehensive list
         const fieldMap: { [key: string]: string } = {
             // Name fields
             'fullName': 'fullName',
             'Full Name': 'fullName',
             'Name': 'fullName',
             'name': 'fullName',
+            'Applicant Name': 'fullName',
+            'Candidate Name': 'fullName',
 
             // DOB
             'dateOfBirth': 'dateOfBirth',
             'Date of Birth': 'dateOfBirth',
             'DOB': 'dateOfBirth',
             'dob': 'dateOfBirth',
+            'Birth Date': 'dateOfBirth',
+            'Date Of Birth': 'dateOfBirth',
 
             // Gender
             'gender': 'gender',
             'Gender': 'gender',
+            'Sex': 'gender',
+            'sex': 'gender',
 
             // Phone
             'phone': 'phone',
             'Phone': 'phone',
             'Mobile': 'phone',
             'mobile': 'phone',
+            'Contact': 'phone',
+            'Phone No': 'phone',
+            'Mobile No': 'phone',
 
             // Email
             'email': 'email',
             'Email': 'email',
+            'E-mail': 'email',
+            'Email ID': 'email',
 
             // Address
             'address': 'addressLine1',
             'Address': 'addressLine1',
+            'addressLine1': 'addressLine1',
+            'Permanent Address': 'addressLine1',
+            'Present Address': 'addressLine1',
+            'Residence': 'addressLine1',
 
             // Father name
             'fatherName': 'fatherName',
             'Father Name': 'fatherName',
             'Father': 'fatherName',
             'father': 'fatherName',
+            'Father\'s Name': 'fatherName',
 
             // Mother name
             'motherName': 'motherName',
             'Mother Name': 'motherName',
             'Mother': 'motherName',
-            'mother': 'motherName'
+            'mother': 'motherName',
+            'Mother\'s Name': 'motherName',
+
+            // District/City
+            'district': 'city',
+            'District': 'city',
+            'city': 'city',
+            'City': 'city',
+            'Town': 'city',
+
+            // State/Region
+            'state': 'region',
+            'State': 'region',
+            'region': 'region',
+            'Region': 'region',
+            'Province': 'province',
+            'province': 'province',
+
+            // Postal Code
+            'postalCode': 'postalCode',
+            'Postal Code': 'postalCode',
+            'Pin Code': 'postalCode',
+            'PIN Code': 'postalCode',
+            'pincode': 'postalCode',
+            'PIN': 'postalCode',
+            'Zip Code': 'postalCode',
+
+            // Place of Birth
+            'Place of Birth': 'placeOfBirth',
+            'placeOfBirth': 'placeOfBirth',
+            'Birth Place': 'placeOfBirth',
+
+            // Registration/Certificate Numbers (for documents)
+            'Registration No': 'referenceIdentityNumber',
+            'Certificate No': 'referenceIdentityNumber',
+            'Aadhaar': 'referenceIdentityNumber',
+            'Aadhaar No': 'referenceIdentityNumber',
+            'PAN': 'referenceIdentityNumber',
+            'Passport No': 'referenceIdentityNumber'
         };
 
         for (const [ocrKey, mosipKey] of Object.entries(fieldMap)) {

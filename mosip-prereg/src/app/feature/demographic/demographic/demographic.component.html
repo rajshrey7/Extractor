@@ -22,22 +22,6 @@
       <span class="readOnly" *ngIf="readOnlyMode">( {{demographiclabels.read_only_message}} )</span>
       <hr />
 
-      <!-- OCR Scanner Section -->
-      <div class="ocr-scan-section"
-        style="margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #f5f7ff 0%, #e8ebff 100%); border-radius: 10px; border-left: 4px solid #667eea;">
-        <h4 style="color: #667eea; margin: 0 0 10px 0;">📷 Quick Fill with OCR</h4>
-        <p style="color: #666; margin-bottom: 10px; font-size: 14px;">Scan your ID/document to auto-fill the form below
-        </p>
-        <button type="button" class="user__btn"
-          style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer;"
-          (click)="openOcrScanner()">
-          🔍 Scan Document with OCR
-        </button>
-        <span *ngIf="ocrDataAvailable" style="margin-left: 15px; color: #28a745; font-weight: 600;">
-          ✅ OCR data loaded - form auto-filled!
-        </span>
-      </div>
-
       <div class="user_container_single_form" *ngIf="primaryuserForm">
         <form [formGroup]="userForm" class="user__form">
           <!-- Create as rows as many as alignmentGroups in UI specs -->

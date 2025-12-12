@@ -9,16 +9,21 @@ class MosipFieldMapper:
 
     # MOSIP ID Schema Standard Fields (v1.2.0 based)
     MOSIP_SCHEMA = {
-        "fullName": ["name", "full name", "given name", "applicant name"],
+        "fullName": ["name", "full name", "given name", "applicant name", "candidate name"],
+        "fatherName": ["father name", "father's name", "fathers name", "name of father", "father"],
+        "motherName": ["mother name", "mother's name", "mothers name", "name of mother", "mother"],
         "dateOfBirth": ["dob", "date of birth", "birth date", "year of birth"],
         "gender": ["gender", "sex"],
-        "addressLine1": ["address line 1", "address", "residence", "house no", "flat no"],
+        "placeOfBirth": ["place of birth", "birth place", "pob"],
+        "addressLine1": ["address line 1", "address", "residence", "house no", "flat no", "permanent address", "present address"],
         "addressLine2": ["address line 2", "street", "road", "colony", "locality"],
         "city": ["city", "district", "town", "village"],
-        "province": ["state", "province", "region"],
-        "postalCode": ["pin code", "pincode", "postal code", "zip code"],
-        "phone": ["phone", "mobile", "contact number", "cell"],
-        "email": ["email", "e-mail", "mail id"],
+        "region": ["region", "state"],
+        "province": ["province"],
+        "postalCode": ["pin code", "pincode", "postal code", "zip code", "pin"],
+        "phone": ["phone", "mobile", "contact number", "cell", "phone no", "mobile no"],
+        "email": ["email", "e-mail", "mail id", "email id"],
+        "referenceIdentityNumber": ["registration no", "certificate no", "aadhaar", "aadhaar no", "pan", "passport no", "id number"],
         "documentType": ["document type", "doc type"],
         "documentNumber": ["document no", "passport no", "id no", "card no", "identity no"],
     }

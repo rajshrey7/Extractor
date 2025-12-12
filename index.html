@@ -1349,6 +1349,23 @@
       // Store for job form filler
       extractedDataGlobal = data.extracted_fields || {};
 
+      // MOSIP INTEGRATION: Automatically send data to parent if in iframe
+      const isInIframe = window.parent !== window;
+      if (isInIframe && Object.keys(extractedDataGlobal).length > 0) {
+        const message = {
+          type: 'OCR_DATA_EXTRACTED',
+          payload: {
+            extracted_fields: extractedDataGlobal,
+            timestamp: new Date().toISOString(),
+            confidence: data.trocr_confidence || {},
+            method: data.method || 'unknown'
+          }
+        };
+        // Post to parent window (Angular app)
+        window.parent.postMessage(message, '*');
+        console.log('Auto-sent OCR data to MOSIP parent:', message);
+      }
+
       document.getElementById("results").classList.add("show");
       // Scroll to results
       document
@@ -1367,6 +1384,12 @@
         successMsg +=
           " (Google Vision unavailable, using YOLO extraction)";
       }
+
+      // Add MOSIP integration info if embedded
+      if (isInIframe) {
+        successMsg += " 📤 Data sent to MOSIP form.";
+      }
+
       showAlert("alert", successMsg, "success");
     };
 
