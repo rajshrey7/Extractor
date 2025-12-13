@@ -1,278 +1,305 @@
-# Installation & Integration Guide
+# Installation & Setup Guide
 ## MOSIP Pre-Registration OCR System
 
 **Version:** 2.0.0  
-**Last Updated:** December 12, 2024
+**Last Updated:** December 13, 2025
+
+---
+
+## 📖 What is This?
+
+This guide will help you install and run the **MOSIP Pre-Registration OCR System** on your computer. Don't worry if you're not technical - just follow each step carefully!
+
+The application has **two parts**:
+1. **OCR Tool** (localhost:8001) - Extracts text from documents
+2. **MOSIP Pre-Registration** (localhost:4200) - Identity registration form
 
 ---
 
 ## Table of Contents
 
-1. [System Requirements](#system-requirements)
-2. [Quick Start](#quick-start)
-3. [Detailed Installation](#detailed-installation)
-   - [Windows](#windows-installation)
-   - [Linux/Ubuntu](#linux-installation)
-   - [macOS](#macos-installation)
-4. [Running the Application](#running-the-application)
-5. [Configuration](#configuration)
-6. [OCR to Form Integration](#ocr-to-form-integration)
-7. [Production Deployment](#production-deployment)
-8. [Troubleshooting](#troubleshooting)
+1. [Before You Start](#-before-you-start)
+2. [Installing Requirements](#-installing-requirements)
+3. [Setting Up the Project](#-setting-up-the-project)
+4. [Running the Application](#-running-the-application)
+5. [Using the Application](#-using-the-application)
+6. [Common Problems & Solutions](#-common-problems--solutions)
+7. [Quick Reference](#-quick-reference)
 
 ---
 
-## System Requirements
+## ✅ Before You Start
 
-### Minimum Requirements
+### What You Need
 
-| Component | Specification |
-|-----------|--------------|
-| **OS** | Windows 10+, Ubuntu 20.04+, macOS 11+ |
-| **Python** | 3.10 or higher |
-| **Node.js** | 14.x or higher |
-| **RAM** | 4GB (8GB recommended for TrOCR) |
-| **Disk Space** | 5GB (includes OCR models) |
+| Item | Requirement | Why? |
+|------|-------------|------|
+| **Computer** | Windows 10/11, macOS, or Linux | Operating system |
+| **RAM** | 4GB minimum (8GB better) | For OCR models |
+| **Storage** | 5GB free space | For models and dependencies |
+| **Internet** | Required for first setup | Downloads ~1-2GB of data |
 
-### Verify Prerequisites
+### Time Required
 
-```bash
-# Check Python version
-python --version
-# Should output: Python 3.10.x or higher
+| Step | Time (first time) |
+|------|-------------------|
+| Installing software | 15-20 minutes |
+| Downloading models | 10-15 minutes |
+| Total | ~30-40 minutes |
 
-# Check Node.js version
-node --version
-# Should output: v14.x.x or higher
-
-# Check npm version
-npm --version
-```
+> 💡 **Good to know:** After the first setup, starting the app takes only 1-2 minutes!
 
 ---
 
-## Quick Start
+## 📥 Installing Requirements
 
-### 5-Minute Setup
-
-```bash
-# 1. Clone repository
-git clone <repository-url>
-cd extractor
-
-# 2. Create and activate Python virtual environment
-python -m venv venv
-
-# Windows:
-.\venv\Scripts\Activate.ps1
-
-# Linux/macOS:
-source venv/bin/activate
-
-# 3. Install Python dependencies
-pip install -r requirements.txt
-
-# 4. Install Angular dependencies
-cd mosip-prereg
-npm install
-cd ..
-
-# 5. Start Backend (Terminal 1)
-python run_server.py
-
-# 6. Start Frontend (Terminal 2)
-cd mosip-prereg
-npm start
-```
-
-### Access the Application
-
-| Application | URL |
-|------------|-----|
-| **MOSIP Pre-Registration** | http://localhost:4200 |
-| **OCR Extraction Tool** | http://localhost:8001 |
-| **API Documentation** | http://localhost:8001/docs |
+You need to install **TWO programs** before starting:
+1. **Python** (the backend programming language)
+2. **Node.js v12** (for the web interface)
 
 ---
 
-## Detailed Installation
+### Step 1: Install Python 3.10+
 
-### Windows Installation
+#### Windows
 
-#### Step 1: Install Python 3.10+
+1. Go to: https://www.python.org/downloads/
+2. Click the big **"Download Python"** button
+3. Run the downloaded file
+4. ⚠️ **IMPORTANT:** Check the box that says **"Add Python to PATH"** at the bottom!
+   
+   ![Add to PATH checkbox](https://docs.python.org/3/_images/win_installer.png)
+   
+5. Click **"Install Now"**
+6. Wait for installation to complete
+7. Click **"Close"**
 
-1. Download from [python.org](https://www.python.org/downloads/)
-2. Run installer
-3. **✅ Check "Add Python to PATH"**
-4. Click "Install Now"
+#### macOS
 
-#### Step 2: Install Node.js 14+
+1. Go to: https://www.python.org/downloads/
+2. Download the macOS installer
+3. Double-click to install
+4. Follow the prompts
 
-1. Download from [nodejs.org](https://nodejs.org/)
-2. Run installer with default options
-3. Restart terminal after installation
-
-#### Step 3: Clone Repository
-
-```powershell
-git clone <repository-url>
-cd extractor
-```
-
-#### Step 4: Create Virtual Environment
-
-```powershell
-# Create virtual environment
-python -m venv venv
-
-# Activate (PowerShell)
-.\venv\Scripts\Activate.ps1
-
-# If you get execution policy error:
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-.\venv\Scripts\Activate.ps1
-```
-
-**Verification:** Your prompt should show `(venv)` prefix.
-
-#### Step 5: Install Python Dependencies
-
-```powershell
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-**Note:** First installation downloads ~2GB of OCR models. This may take 10-15 minutes.
-
-#### Step 6: Install Angular Dependencies
-
-```powershell
-cd mosip-prereg
-npm install
-cd ..
-```
-
-#### Step 7: Verify Installation
-
-```powershell
-# Test Python imports
-python -c "import paddle; import transformers; print('✅ Python dependencies OK')"
-
-# Test Node modules
-cd mosip-prereg
-npm list @angular/core
-cd ..
-```
-
----
-
-### Linux Installation
-
-#### Step 1: Update System
+#### Linux (Ubuntu/Debian)
 
 ```bash
-sudo apt update && sudo apt upgrade -y
-```
-
-#### Step 2: Install Python 3.10+
-
-```bash
+sudo apt update
 sudo apt install python3.10 python3.10-venv python3-pip -y
-python3.10 --version
 ```
 
-#### Step 3: Install Node.js 14+
+#### 🔍 Verify Python Installation
+
+Open **PowerShell** (Windows) or **Terminal** (Mac/Linux) and type:
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt install nodejs -y
+python --version
+```
+
+You should see something like: `Python 3.10.x` or higher.
+
+> ❌ If you see an error or a version below 3.10, reinstall Python.
+
+---
+
+### Step 2: Install Node.js v12 (VERY IMPORTANT!)
+
+⚠️ **CRITICAL:** This project requires **Node.js version 12.x ONLY**. Newer versions (14, 16, 18, 20) will NOT work!
+
+We'll use **nvm** (Node Version Manager) to install the correct version.
+
+---
+
+#### Windows - Installing Node.js v12
+
+**Part A: Install nvm-windows**
+
+1. Download nvm-windows from this link:
+   https://github.com/coreybutler/nvm-windows/releases/download/1.1.12/nvm-setup.exe
+
+2. Run the installer (`nvm-setup.exe`)
+3. Click **Next** → **Next** → **Install** → **Finish**
+4. **CLOSE all PowerShell/Command Prompt windows** (Important!)
+
+**Part B: Install Node.js 12**
+
+1. Open **NEW PowerShell as Administrator**:
+   - Click Start menu
+   - Type "PowerShell"
+   - Right-click **Windows PowerShell**
+   - Click **"Run as administrator"**
+   - Click **Yes** if prompted
+
+2. Type these commands one by one (press Enter after each):
+
+```powershell
+nvm install 12.22.12
+```
+
+Wait for download to complete (about 1 minute).
+
+```powershell
+nvm use 12.22.12
+```
+
+3. Verify it worked:
+
+```powershell
 node --version
+```
+
+You should see: `v12.22.12`
+
+```powershell
 npm --version
 ```
 
-#### Step 4: Clone and Setup
+You should see: `6.x.x` (like 6.14.16)
+
+> ✅ If you see these versions, you're ready to continue!
+
+---
+
+#### macOS/Linux - Installing Node.js v12
+
+1. Open Terminal and run:
 
 ```bash
-git clone <repository-url>
-cd extractor
+# Install nvm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+```
 
-# Create virtual environment
-python3.10 -m venv venv
-source venv/bin/activate
+2. Close and reopen Terminal, then run:
 
-# Install dependencies
-pip install --upgrade pip
-pip install -r requirements.txt
+```bash
+# Verify nvm installed
+source ~/.bashrc   # or ~/.zshrc if using zsh
 
-# Install Angular
-cd mosip-prereg
-npm install
-cd ..
+# Install Node 12
+nvm install 12.22.12
+nvm use 12.22.12
+
+# Verify
+node --version   # Should show v12.22.12
+npm --version    # Should show 6.x.x
 ```
 
 ---
 
-### macOS Installation
+## 🔧 Setting Up the Project
 
-#### Step 1: Install Homebrew
+Now let's set up the actual application.
 
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
+### Step 3: Get the Project Files
 
-#### Step 2: Install Python and Node.js
+If you have a ZIP file, extract it to a folder like `C:\extractor` (Windows) or `~/extractor` (Mac/Linux).
 
-```bash
-brew install python@3.10 node
-python3.10 --version
-node --version
-```
-
-#### Step 3: Clone and Setup
-
+If using Git:
 ```bash
 git clone <repository-url>
 cd extractor
-
-# Create virtual environment
-python3.10 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install --upgrade pip
-pip install -r requirements.txt
-
-# Install Angular
-cd mosip-prereg
-npm install
-cd ..
 ```
 
----
+### Step 4: Set Up Python Environment
 
-## Running the Application
+Open **PowerShell** (Windows) or **Terminal** (Mac/Linux) and navigate to the project:
 
-### Start Both Servers
+#### Windows:
 
-You need **two terminal windows** running simultaneously.
+```powershell
+# Navigate to project folder (change path if different)
+cd C:\extractor
 
-#### Terminal 1: Python Backend (Port 8001)
-
-```bash
-# Navigate to project root
-cd extractor
+# Create virtual environment
+python -m venv venv
 
 # Activate virtual environment
-# Windows:
 .\venv\Scripts\Activate.ps1
-# Linux/macOS:
-source venv/bin/activate
+```
 
-# Start server
+> ⚠️ **If you get a "execution policy" error**, run this first:
+> ```powershell
+> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> ```
+> Then try the activation again.
+
+After activation, your prompt should show `(venv)` at the beginning like this:
+```
+(venv) PS C:\extractor>
+```
+
+#### macOS/Linux:
+
+```bash
+# Navigate to project folder
+cd ~/extractor
+
+# Create virtual environment
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate
+```
+
+Your prompt should show `(venv)` at the beginning.
+
+---
+
+### Step 5: Install Python Dependencies
+
+With the virtual environment activated (you should see `(venv)` in your prompt):
+
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+> ⏳ **This will take 5-10 minutes** and download about 1-2GB of data (OCR models). Be patient!
+
+You'll see many packages being installed. Wait until you see your prompt again.
+
+---
+
+### Step 6: Install Frontend Dependencies
+
+Open a **NEW terminal/PowerShell window** (keeping the first one open), then:
+
+```bash
+# Navigate to Angular project
+cd C:\extractor\mosip-prereg   # Windows
+# OR
+cd ~/extractor/mosip-prereg    # Mac/Linux
+
+# Install dependencies
+npm install
+```
+
+> ⏳ **This will take 5-10 minutes**. You'll see warnings - that's normal, ignore them.
+
+Wait until you see your prompt again and no more text is appearing.
+
+---
+
+## 🚀 Running the Application
+
+You need **TWO terminal windows** running at the same time - one for each server.
+
+### Terminal 1: Start the Backend (Python Server)
+
+```powershell
+# Navigate to project root
+cd C:\extractor
+
+# Activate virtual environment (if not already active)
+.\venv\Scripts\Activate.ps1   # Windows PowerShell
+# OR
+source venv/bin/activate      # Mac/Linux
+
+# Start the server
 python run_server.py
 ```
 
-**Expected Output:**
+**What you should see:**
 ```
 ====================
 Starting OCR Server...
@@ -282,297 +309,269 @@ Starting OCR Server...
 INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
 ```
 
-#### Terminal 2: Angular Frontend (Port 4200)
+> 📍 **Keep this terminal open!** Don't close it.
 
-```bash
+> ⏳ **First time only:** The first startup downloads OCR models (~1GB). This can take 5-10 minutes. Let it run!
+
+---
+
+### Terminal 2: Start the Frontend (Angular Server)
+
+Open a **NEW** PowerShell/Terminal window:
+
+```powershell
 # Navigate to Angular project
-cd extractor/mosip-prereg
+cd C:\extractor\mosip-prereg   # Windows
+# OR
+cd ~/extractor/mosip-prereg    # Mac/Linux
 
-# Start development server
+# Start the Angular server
 npm start
 ```
 
-**Expected Output:**
+**What you should see (after 1-2 minutes):**
 ```
 ** Angular Live Development Server is listening on localhost:4200 **
 : Compiled successfully.
 ```
 
-### Verify Both Servers
-
-1. Open http://localhost:4200 → MOSIP Login page
-2. Open http://localhost:8001 → OCR Extraction tool
-3. Open http://localhost:8001/docs → API documentation
+> 📍 **Keep this terminal open too!**
 
 ---
 
-## Configuration
+### ✅ Verify Everything is Running
 
-### Backend Configuration (`config.py`)
+Open your web browser and go to these addresses:
 
-```python
-# Language Settings
-SELECTED_LANGUAGE = "en"  # en, ar, hi
+| URL | What You Should See |
+|-----|---------------------|
+| http://localhost:4200 | MOSIP Login page (with phone/email input) |
+| http://localhost:8001 | OCR Extraction tool (upload documents) |
+| http://localhost:8001/docs | API Documentation (Swagger UI) |
 
-# MOSIP Integration
-MOSIP_ENABLED = False     # True to connect to real MOSIP server
-MOSIP_BASE_URL = "https://collab.mosip.net"
-MOSIP_CLIENT_ID = "mosip-prereg-client"
-MOSIP_CLIENT_SECRET = "your-secret"
+🎉 **Congratulations!** If you see all three pages, the application is working!
+
+---
+
+## 🎮 Using the Application
+
+### OCR Tool (localhost:8001)
+
+1. Open http://localhost:8001
+2. Click **"Extract Text"** tab
+3. Upload a document (JPG, PNG, or PDF)
+4. Click **"Process Docs"**
+5. View extracted text fields
+6. Click **"Send to MOSIP"** to save as packet
+
+### MOSIP Pre-Registration (localhost:4200)
+
+1. Open http://localhost:4200
+2. Enter any email (e.g., `test@example.com`)
+3. Click **"Send OTP"**
+4. Enter any 6 digits (e.g., `123456`) - the system accepts any code
+5. Fill in the registration form
+6. Upload documents (optional in demo mode)
+7. Book appointment and submit
+
+---
+
+## 🔧 Common Problems & Solutions
+
+### Problem: "npm install" or "npm start" fails with RxJS errors
+
+**Error looks like:**
+```
+ERROR in node_modules/@angular-devkit/build-angular/node_modules/rxjs/internal/...
 ```
 
-### Frontend Configuration
+**Cause:** You're using the wrong Node.js version (probably 14, 16, or newer)
 
-#### API URL (`mosip-prereg/src/assets/configs/default.properties`)
+**Solution:**
+```powershell
+# Check your Node version
+node --version
 
+# If it's NOT v12.x.x, fix it:
+nvm use 12.22.12
+
+# Verify
+node --version   # Should show v12.22.12
+
+# Clean reinstall (in the mosip-prereg folder)
+cd mosip-prereg
+Remove-Item -Recurse -Force node_modules   # Windows
+# OR: rm -rf node_modules                  # Mac/Linux
+Remove-Item package-lock.json              # Windows
+# OR: rm package-lock.json                 # Mac/Linux
+npm cache clean --force
+npm install
+npm start
+```
+
+---
+
+### Problem: PowerShell won't activate virtual environment
+
+**Error:** "execution of scripts is disabled on this system"
+
+**Solution:**
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+Then try activating again:
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+---
+
+### Problem: Port 8001 already in use
+
+**Solution (Windows):**
+```powershell
+netstat -ano | findstr :8001
+# Note the PID number shown
+taskkill /PID <PID> /F
+```
+
+**Solution (Mac/Linux):**
+```bash
+lsof -ti:8001 | xargs kill -9
+```
+
+---
+
+### Problem: Port 4200 already in use
+
+**Solution (Windows):**
+```powershell
+netstat -ano | findstr :4200
+taskkill /PID <PID> /F
+```
+
+**Solution (Mac/Linux):**
+```bash
+lsof -ti:4200 | xargs kill -9
+```
+
+---
+
+### Problem: Python module not found
+
+**Solution:**
+Make sure your virtual environment is activated (you see `(venv)` in prompt), then:
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+### Problem: Blank page at localhost:4200
+
+**Causes & Solutions:**
+1. **Angular still compiling** - Wait 1-2 minutes, check terminal for "Compiled successfully"
+2. **Cache issue** - Press `Ctrl+Shift+R` to hard refresh
+3. **Server not running** - Check Terminal 2 is still running
+
+---
+
+### Problem: Login fails at localhost:4200
+
+**Solution:**
+- Check Terminal 1 (Python backend) is still running
+- If it crashed, restart it with `python run_server.py`
+
+---
+
+### Problem: OCR models downloading slowly / taking forever
+
+**This is normal for first run!**
+
+- Models are ~1GB total
+- On slow internet, this can take 15-30 minutes
+- Once downloaded, they're cached forever
+- Just wait patiently
+
+---
+
+## 📋 Quick Reference
+
+### Starting the App (After First Setup)
+
+**Terminal 1:**
+```powershell
+cd C:\extractor
+.\venv\Scripts\Activate.ps1
+python run_server.py
+```
+
+**Terminal 2:**
+```powershell
+cd C:\extractor\mosip-prereg
+npm start
+```
+
+### Stopping the App
+
+- Press `Ctrl+C` in each terminal window
+
+### URLs
+
+| Service | URL |
+|---------|-----|
+| MOSIP Pre-Registration | http://localhost:4200 |
+| OCR Tool | http://localhost:8001 |
+| API Docs | http://localhost:8001/docs |
+
+### Demo Login
+
+| Field | Value |
+|-------|-------|
+| Email/Phone | Any email (e.g., `test@example.com`) |
+| OTP | Any 6 digits (e.g., `123456`) |
+
+---
+
+## 🆘 Still Need Help?
+
+If you're still having issues:
+
+1. **Screenshot the error** from your terminal
+2. **Note which step** you were on
+3. **Check Node version** with `node --version` (must be v12.x.x)
+4. **Check Python version** with `python --version` (must be 3.10+)
+
+---
+
+## ⚙️ Advanced Configuration (Optional)
+
+### Python Backend Settings (`config.py`)
+
+```python
+SELECTED_LANGUAGE = "en"  # Options: en, ar, hi
+MOSIP_ENABLED = False     # Set True for real MOSIP server
+```
+
+### Frontend API URL
+
+Edit `mosip-prereg/src/assets/configs/default.properties`:
 ```properties
 mosip.preregistration.api.url=http://localhost:8001
 ```
 
-#### Supported Languages
+---
 
-The system supports:
-- **English (eng)** — Default
-- **Arabic (ara)** — RTL support
-- **French (fra)**
+**Document Version:** 2.0.0  
+**Last Updated:** December 13, 2025  
+**Compatible With:** Python 3.10+ | Node.js 12.x | Angular 7
 
 ---
 
-## OCR to Form Integration
+<div align="center">
 
-### How It Works
+**Made for MOSIP Pre-Registration and Document Processing**
 
-1. **User opens OCR tool** (http://localhost:8001)
-2. **Uploads document** and processes with OCR
-3. **Extracted data sent via `postMessage`** to Angular app
-4. **OcrDataService receives** and stores data
-5. **DemographicComponent auto-fills** form fields
+🚀 You're all set! Happy registering!
 
-### Field Mapping
-
-| OCR Extracted Field | MOSIP Form Field |
-|---------------------|------------------|
-| Name, Full Name | fullName |
-| Father Name, Father's Name | fatherName |
-| Mother Name, Mother's Name | motherName |
-| Date of Birth, DOB | dateOfBirth |
-| Gender, Sex | gender |
-| Phone, Mobile | phone |
-| Email | email |
-| Address | addressLine1 |
-| City | city |
-| Pin Code, Postal Code | postalCode |
-
-### Testing the Integration
-
-1. Open http://localhost:4200
-2. Login with any email and OTP (e.g., `123456`)
-3. Create new application
-4. Click "Scan Document" in demographic form
-5. Upload a document with name, DOB, etc.
-6. Fields should auto-fill in the form
-
----
-
-## Production Deployment
-
-### Using systemd (Linux)
-
-Create `/etc/systemd/system/ocr-backend.service`:
-
-```ini
-[Unit]
-Description=OCR Backend Service
-After=network.target
-
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/opt/extractor
-Environment="PATH=/opt/extractor/venv/bin"
-ExecStart=/opt/extractor/venv/bin/python run_server.py
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable ocr-backend
-sudo systemctl start ocr-backend
-```
-
-### Angular Production Build
-
-```bash
-cd mosip-prereg
-npm run build --prod
-```
-
-Deploy `dist/` folder to web server (Nginx, Apache).
-
-### Nginx Configuration
-
-```nginx
-server {
-    listen 80;
-    server_name prereg.example.com;
-
-    # Angular frontend
-    location / {
-        root /var/www/mosip-prereg;
-        try_files $uri $uri/ /index.html;
-    }
-
-    # API proxy
-    location /preregistration/ {
-        proxy_pass http://localhost:8001;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-
-    location /api/ {
-        proxy_pass http://localhost:8001;
-        proxy_set_header Host $host;
-    }
-}
-```
-
----
-
-## Troubleshooting
-
-### Installation Issues
-
-#### Python: ModuleNotFoundError
-
-```bash
-# Ensure virtual environment is activated
-# Then reinstall:
-pip install --upgrade -r requirements.txt
-```
-
-#### Node: npm install fails
-
-```bash
-cd mosip-prereg
-rm -rf node_modules package-lock.json
-npm cache clean --force
-npm install
-```
-
-#### Windows: venv won't activate
-
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-.\venv\Scripts\Activate.ps1
-```
-
-### Runtime Issues
-
-#### Port 8001 in use
-
-```bash
-# Windows
-netstat -ano | findstr :8001
-taskkill /PID <PID> /F
-
-# Linux/macOS
-lsof -ti:8001 | xargs kill -9
-```
-
-#### Port 4200 in use
-
-```bash
-# Windows
-netstat -ano | findstr :4200
-taskkill /PID <PID> /F
-
-# Linux/macOS
-lsof -ti:4200 | xargs kill -9
-```
-
-#### Angular compilation errors
-
-```bash
-cd mosip-prereg
-npm start -- --source-map=false
-```
-
-#### OCR models downloading slowly
-
-First startup downloads ~1GB of models. On slow connections:
-- Wait patiently (can take 10-20 minutes)
-- Models are cached after first download
-
-### MOSIP UI Issues
-
-| Problem | Solution |
-|---------|----------|
-| Login fails | Restart Python backend |
-| Form fields missing | Clear browser cache (Ctrl+Shift+R) |
-| Preview not showing fields | Check console for errors |
-| Appointment booking fails | Ensure backend is running |
-
-### OCR Issues
-
-| Problem | Solution |
-|---------|----------|
-| Poor accuracy | Check image quality (>85% recommended) |
-| Handwritten text missing | Enable TrOCR checkbox |
-| Processing timeout | Reduce image size or PDF pages |
-
----
-
-## Health Checks
-
-### Backend Health
-
-```bash
-curl http://localhost:8001/
-# Should return HTML of OCR tool
-```
-
-### Frontend Health
-
-```bash
-curl http://localhost:4200/
-# Should return Angular app HTML
-```
-
-### API Health
-
-```bash
-curl http://localhost:8001/preregistration/v1/config
-# Should return JSON configuration
-```
-
----
-
-## Quick Reference Commands
-
-```bash
-# Activate virtual environment
-.\venv\Scripts\Activate.ps1  # Windows
-source venv/bin/activate     # Linux/macOS
-
-# Start backend
-python run_server.py
-
-# Start frontend
-cd mosip-prereg && npm start
-
-# Stop all Python processes (Windows)
-Get-Process -Name python | Stop-Process -Force
-
-# Stop all Node processes (Windows)
-Get-Process -Name node | Stop-Process -Force
-```
-
----
-
-**Document Version:** 2.0  
-**Last Updated:** December 12, 2025
-
+</div>

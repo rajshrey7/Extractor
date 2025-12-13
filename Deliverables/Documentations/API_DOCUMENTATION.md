@@ -503,5 +503,5 @@ print("Extracted:", ocr_data["extracted_fields"])
 ---
 
 **API Version:** 2.0  
-**Last Updated:** December 12, 2025
+**Last Updated:** December 13, 2025
 **Maintained By:** Development Team

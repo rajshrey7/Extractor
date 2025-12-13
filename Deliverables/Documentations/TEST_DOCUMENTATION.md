@@ -3,7 +3,7 @@
 
 **Version:** 2.0.0  
 **Test Coverage:** Functional, Integration, E2E, Performance  
-**Last Updated:** December 12, 2024
+**Last Updated:** December 13, 2025
 
 ---
 
@@ -60,7 +60,7 @@
 
 ### Software Requirements
 - **Python:** 3.10+
-- **Node.js:** 14+
+- **Node.js:** 12.x ONLY (v12.22.12 recommended) — Angular 7 is NOT compatible with Node 14+
 - **Browser:** Chrome 120+, Firefox 121+
 
 ### Test Servers
@@ -624,8 +624,8 @@ npm test
 
 ## Test Results Summary
 
-**Test Execution Date:** December 12, 2024  
-**Environment:** Windows 10, Python 3.10, Node 18  
+**Test Execution Date:** December 13, 2025  
+**Environment:** Windows 10, Python 3.10, Node 12.22.12  
 
 | Category | Total | Passed | Failed | Pending |
 |----------|-------|--------|--------|---------|
@@ -640,4 +640,4 @@ npm test
 ---
 
 **Document Version:** 2.0  
-**Last Updated:** December 12, 2025
+**Last Updated:** December 13, 2025

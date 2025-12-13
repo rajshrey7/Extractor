@@ -2,7 +2,7 @@
 ## MOSIP Pre-Registration OCR System
 
 **Version:** 2.0.0  
-**Date:** December 12, 2024  
+**Date:** December 13, 2025  
 **Status:** Production Ready
 
 ---
@@ -56,7 +56,7 @@ The MOSIP Pre-Registration OCR System is an enterprise-grade solution that combi
 │                           USER INTERFACE LAYER                          │
 ├─────────────────────────────────┬──────────────────────────────────────┤
 │     OCR Extraction UI           │    MOSIP Pre-Registration UI          │
-│     (index.html)                │    (Angular 8)                        │
+│     (index.html)                │    (Angular 7)                        │
 │     Port: 8001                  │    Port: 4200                         │
 │                                 │                                       │
 │  ┌──────────────────────────┐   │   ┌─────────────────────────────┐    │
@@ -330,11 +330,12 @@ MOSIP_SCHEMA = {
 
 | Technology | Version | Purpose |
 |------------|---------|---------|
-| **Angular** | 8 | Frontend framework |
-| **TypeScript** | 3.x | Language |
-| **Angular Material** | 8.x | UI components |
+| **Angular** | 7.2 | Frontend framework |
+| **Node.js** | 12.x ONLY | Runtime (Angular 7 requirement) |
+| **TypeScript** | 3.2 | Language |
+| **Angular Material** | 7.x | UI components |
 | **RxJS** | 6.x | Reactive programming |
-| **ngx-translate** | Latest | Internationalization |
+| **ngx-translate** | 10.x | Internationalization |
 | **Moment.js** | Latest | Date handling |
 
 ### 5.3 Infrastructure
@@ -469,5 +470,5 @@ MOSIP Pre-Registration Backend
 ---
 
 **Document Version:** 2.0.0  
-**Last Updated:** December 12, 2025
+**Last Updated:** December 13, 2025
 **Approved By:** Development Team
