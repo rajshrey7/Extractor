@@ -4,7 +4,7 @@
 
 ![MOSIP](https://img.shields.io/badge/MOSIP-Integrated-blue?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.10+-green?style=for-the-badge&logo=python)
-![Angular](https://img.shields.io/badge/Angular-8-red?style=for-the-badge&logo=angular)
+![Angular](https://img.shields.io/badge/Angular-7-red?style=for-the-badge&logo=angular)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Latest-009688?style=for-the-badge&logo=fastapi)
 
 **A complete document processing and identity pre-registration system combining OCR extraction, MOSIP Pre-Registration UI, and backend mock services.**
@@ -53,26 +53,60 @@ This project provides a **complete MOSIP Pre-Registration solution** with:
 |-----------|-------------|
 | **Operating System** | Windows 10/11, macOS 10.15+, or Linux (Ubuntu 20.04+) |
 | **Python** | 3.10 or higher |
-| **Node.js** | 14.x or higher (includes npm) |
+| **Node.js** | **v12.x ONLY** (v12.22.12 recommended) - Angular 7 is NOT compatible with Node 14+ |
 | **RAM** | 4GB minimum (8GB recommended for TrOCR models) |
 | **Storage** | 3GB free space (for OCR models) |
 
 ### Verify Prerequisites
 
-```bash
+Before installation, run these commands to check if you have everything:
+
+```powershell
 # Check Python version (should be 3.10+)
 python --version
+# Expected output: Python 3.10.x or higher
 
-# Check Node.js version (should be 14+)
+# Check Node.js version (MUST be v12.x after installing via nvm)
 node --version
+# Expected output: v12.22.12
 
 # Check npm version
 npm --version
+# Expected output: 6.x.x
 ```
+
+**If Python is not installed:**
+- Download from: https://www.python.org/downloads/
+- During installation, CHECK "Add Python to PATH"
+
+**If Node.js shows wrong version (v14, v16, v18, v20):**
+- Follow Step 0 below to install Node.js v12 using nvm
 
 ---
 
 ## 📦 Installation
+
+### Step 0: Install Node.js v12 (REQUIRED)
+
+This project uses Angular 7 which **only works with Node.js v12**. Use nvm to install:
+
+**Windows:**
+1. Download nvm-windows: https://github.com/coreybutler/nvm-windows/releases/download/1.1.12/nvm-setup.exe
+2. Install it, then open **NEW PowerShell as Administrator**
+3. Run:
+```powershell
+nvm install 12.22.12
+nvm use 12.22.12
+node --version   # Should show v12.22.12
+```
+
+**Linux/macOS:**
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+source ~/.bashrc
+nvm install 12.22.12
+nvm use 12.22.12
+```
 
 ### Step 1: Clone the Repository
 
@@ -210,6 +244,15 @@ Once both servers are running, access the application at:
 2. Open http://localhost:8001 — You should see the OCR extraction interface
 3. Open http://localhost:8001/docs — You should see the Swagger API docs
 
+### Demo Credentials (for MOSIP login at localhost:4200)
+
+| Field | Value |
+|-------|-------|
+| **Email/Phone** | Any email (e.g., `test@example.com`) |
+| **OTP** | Any 6 digits (e.g., `123456`) |
+
+> The system runs in **mock mode** - it accepts any valid email format and any 6-digit OTP.
+
 ---
 
 ## 🏗️ System Architecture
@@ -220,7 +263,7 @@ Once both servers are running, access the application at:
 ├─────────────────────────────┬──────────────────────────────────────┤
 │    OCR Extraction UI        │      MOSIP Pre-Registration UI       │
 │    (localhost:8001)         │      (localhost:4200)                │
-│    [index.html]             │      [Angular 8]                     │
+│    [index.html]             │      [Angular 7]                     │
 ├─────────────────────────────┴──────────────────────────────────────┤
 │                         FastAPI Backend                            │
 │                         (localhost:8001)                           │
@@ -429,7 +472,30 @@ pip install -r requirements.txt
 
 ### Angular Issues
 
-**Problem:** `npm start` fails
+**Problem:** `npm install` or `npm start` fails with RxJS errors
+```
+ERROR in node_modules/@angular-devkit/build-angular/node_modules/rxjs/internal/...
+```
+
+**Cause:** Wrong Node.js version (you're using Node 14+ but need Node 12)
+
+**Solution:**
+```powershell
+# Install and use Node 12
+nvm install 12.22.12
+nvm use 12.22.12
+node --version   # Must show v12.22.12
+
+# Clean reinstall
+cd mosip-prereg
+Remove-Item -Recurse -Force node_modules
+Remove-Item package-lock.json
+npm cache clean --force
+npm install
+npm start
+```
+
+**Problem:** `npm start` fails (general)
 ```bash
 cd mosip-prereg
 rm -rf node_modules package-lock.json
@@ -560,7 +626,7 @@ This project is provided for educational and development purposes.
 
 <div align="center">
 
-**Version:** 2.0.0 | **Python:** 3.10+ | **Angular:** 8 | **Status:** Production Ready 🚀
+**Version:** 2.0.0 | **Python:** 3.10+ | **Node.js:** 12.x | **Angular:** 7 | **Status:** Production Ready 🚀
 
 Made for MOSIP Pre-Registration and Document Processing
 

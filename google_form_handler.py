@@ -214,43 +214,32 @@ class GoogleFormHandler:
             f.close()
 
     def submit_form(self, data):
+        """Submit form data to Google Forms."""
         url = self._get_form_response_url()
-        res = requests.post(url, data=data, timeout=5)
-        if res.status_code == 200:
-            print("Successfully submitted the form")
-            return True
-        else:
-            print("Error! Can't submit form", res.status_code)
-            return False
-            
-def get_filled_form_url(self, data: Dict[str, Any]) -> str:
-    """
-    Generate a preview URL for the filled form
-    
-    Args:
-        data: Dictionary of form field IDs and their values
         
-    Returns:
-        URL to view the filled form
-    """
-    if not self.form_id:
-        raise ValueError("No form URL or ID provided")
-    
-    # Create a new response for the form
-    form_url = f"https://docs.google.com/forms/d/e/{self.form_id}/viewform"
-    
-    # Add form responses as URL parameters
-    response_params = []
-    for field_id, value in data.items():
-        if value:  # Only include non-empty values
-            response_params.append(f"entry.{field_id}={requests.utils.quote(str(value))}")
-    
-    # Join all parameters
-    if response_params:
-        form_url += "?" + "&".join(response_params)
-    
-    return form_url
+        # Add headers to mimic a browser request
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Origin': 'https://docs.google.com',
+            'Referer': self.url
+        }
+        
+        try:
+            res = requests.post(url, data=data, headers=headers, timeout=10)
+            if res.status_code in [200, 302, 303]:
+                print("Successfully submitted the form")
+                return True
+            else:
+                print(f"Error! Can't submit form. Status: {res.status_code}")
+                return False
+        except Exception as e:
+            print(f"Error! Request failed: {str(e)}")
+            return False
 
 if __name__ == "__main__":
     # Example usage
     pass
+
